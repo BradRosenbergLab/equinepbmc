@@ -28,6 +28,9 @@ library(ComplexHeatmap)
 library(circlize)
 library(reshape2)
 library(ggtree)
+library(edgeR)
+library(tidyr)
+library(readr)
 
 #### Hack Seurat functions to plot geom_point (shape) and geom_text for label clusters, underlayed with a circles. This is key, as it identifies where the labels are plotted on the UMAP
 GetXYAesthetics <- function(plot, geom = 'GeomPoint', plot.first = TRUE) {
@@ -329,7 +332,7 @@ read_excel_allsheets <- function(filename, tibble = FALSE) {
   x
 }
 
-GeneDetector <- function(SeuratObj, threshold, listname) { 
+GeneDetector <- function(SeuratObj, threshold) { 
   counts <- SeuratObj
   genes <- c()
   for (i in 1:(length(unique(SeuratObj@active.ident))))
@@ -343,7 +346,7 @@ GeneDetector <- function(SeuratObj, threshold, listname) {
     genes <- c(genes, rownames(filtered_df))
   } 
   genes_list <- unique(genes)
-  assign(x = listname, value = genes_list, envir = globalenv())
+  return(genes_list)
 }
 
 contrastConstructor <- 
@@ -352,53 +355,34 @@ contrastConstructor <-
            design,
            makeContrast = FALSE,
            name = NULL){
-    clusterIDs
     clusterIDs.char <- as.character(clusterIDs)
-    clusterIDs.char
     clusterIDs.char.celltype <- paste("celltype", clusterIDs.char, sep = "")
-    clusterIDs.char.celltype
     clusterIDs.char.celltype.combined <- paste(clusterIDs.char.celltype, collapse = "+")
-    clusterIDs.char.celltype.combined
     clusterIDs.length <- as.character(length(clusterIDs.char.celltype))
-    clusterIDs.length
     clusterIDs.char.celltype.combined.parantheses <- paste0("(", clusterIDs.char.celltype.combined, ")")
     clusterIDs.ready <- paste(clusterIDs.char.celltype.combined.parantheses, 
                               clusterIDs.length, 
                               sep = "/", collapse = "")
-    clusterIDs.ready
-    
     if(missing(clusterIDs.2))
     {
       otherClusterIDs <- setdiff(x = colnames(design), 
                                  y = clusterIDs.char.celltype)
-      otherClusterIDs.num <- grep("[[:digit:]]", otherClusterIDs, value = T)
+      otherClusterIDs.num <- grep("celltype[[:digit:]]", otherClusterIDs, value = T)
       otherClusterIDs.length <- as.character(length(otherClusterIDs.num))
-      otherClusterIDs.length
       otherClusterIDs.combined <- paste(otherClusterIDs.num, collapse = "+")
-      otherClusterIDs.combined
       otherClusterIDs.combined.parentheses <- paste0("(", otherClusterIDs.combined, ")")
-      otherClusterIDs.combined.parentheses
       otherClusterIDs.ready <- paste(otherClusterIDs.combined.parentheses, otherClusterIDs.length, sep = "/", collapse = "")
-      otherClusterIDs.ready
       contrastString <- paste(clusterIDs.ready, otherClusterIDs.ready, sep = "-")
-      contrastString
     }else{
-      clusterIDs.2
       clusterIDs.2.char <- as.character(clusterIDs.2)
-      clusterIDs.2.char
       clusterIDs.2.char.celltype <- paste("celltype", clusterIDs.2.char, sep = "")
-      clusterIDs.2.char.celltype
       clusterIDs.2.char.celltype.combined <- paste(clusterIDs.2.char.celltype, collapse = "+")
-      clusterIDs.2.char.celltype.combined
       clusterIDs.2.length <- as.character(length(clusterIDs.2.char.celltype))
-      clusterIDs.2.length
       clusterIDs.2.char.celltype.combined.parantheses <- paste0("(", clusterIDs.2.char.celltype.combined, ")")
       clusterIDs.2.ready <- paste(clusterIDs.2.char.celltype.combined.parantheses, 
                                   clusterIDs.2.length, 
                                   sep = "/", collapse = "")
-      clusterIDs.2.ready
       contrastString <- paste(clusterIDs.ready, clusterIDs.2.ready, sep = "-")
-      
     }
     if(makeContrast == T){
       if(missing(name)){
@@ -423,7 +407,6 @@ generateContrasts <- function(cluster.numbers, prefix){
       name = paste(prefix, cluster.numbers[i], sep = ""))
   }
 }
-
 
 plottree <- function (object, ...) 
 {
@@ -535,8 +518,6 @@ prettyheatmap <- function(object,
   }
 }
 
-
-
 prettyDots <-
   function(dotplot,
            colors,
@@ -603,3 +584,196 @@ prettyDots <-
     print(plot)
     print(plot.noleg)
   }
+
+edgeR_create_fit <- function(object, gene.detection.thres = 0.10, celltype.ident = "order")
+  {
+## Set the object identity 
+object <- SetIdent(object, value = celltype.ident)
+  
+## Detect genes that are expressed in at least 10% of any given cluster in the Seurat object and write them out into a vector called "marker.names".
+marker.names <- GeneDetector(SeuratObj = object, threshold = gene.detection.thres)
+
+## Filter the raw gene-cell counts matrix(stored in the Seurat object) with the genes identified above
+tmp.matrix <- object@assays$RNA@counts[marker.names, ]
+
+## Create the Seurat object to recalculate the nFeature_RNA (unique genes detected/cell)
+tmp <- CreateSeuratObject(tmp.matrix)
+colnames(tmp@meta.data)[3] <- "Recalculated_nGene"
+tmp <- AddMetaData(object = tmp, metadata = object@meta.data)
+
+## Calculate the gdr from the nGene column in the Seurat metadat
+tmp@meta.data$gdr <- as.numeric(scale(tmp@meta.data$Recalculated_nGene))
+
+## Create DGE counts object from the edgeR package
+counts <- DGEList(counts = tmp@assays$RNA@counts, genes = rownames(tmp))
+## Calculate the library sizes of each single cell to be analyzed
+counts$samples$lib.PBMSCize <- colSums(counts$counts)
+## Calculate the normalization factors to be applied to make single cell comparable
+counts <- edgeR::calcNormFactors(counts)
+
+## Reformat metadata from the Seurat object to make compatible with edgeR/design matrix
+edgeRmetadata <- tmp@meta.data[, c("Subject", celltype.ident, "gdr")]
+colnames(edgeRmetadata)[2] <- "celltype"
+edgeRmetadata$celltype <- as.factor(edgeRmetadata$celltype) %>% droplevels()
+design <- model.matrix(~ 0 + gdr + celltype + Subject, data = edgeRmetadata)
+colnames(design) <- make.names(colnames(design))
+
+## Estimate dispersion
+counts <- estimateDisp(counts, design, robust = T)
+## Perform the edgeR fit
+fit <- glmQLFit(counts, design)
+
+return_list <- list(fit, counts, design)
+names(return_list) <- c("fit", "counts", "design")
+return(return_list)
+}
+
+add.percent.expression <- 
+  function(dge_list, object, ident, subset = NULL, group.ident = NULL){
+    if(!is.null(subset)){
+      object <- SetIdent(object, value = group.ident)
+      object <- subset(x = object, ident = subset)
+    }
+    dge_list <- dge_list[gtools::mixedorder(names(dge_list))]
+    my_genes <- lapply(dge_list, tibble::remove_rownames) %>% 
+      lapply(tibble::column_to_rownames, var = "genes") %>% 
+      lapply(rownames)
+    object <- SetIdent(object, value = ident)
+    exp <- SplitObject(object, split.by = ident)
+    exp <- exp[gtools::mixedorder(names(exp))]
+    mat <- 
+      mapply(function(x,y) {
+        FetchData(object = x, vars = y)
+      }, 
+      exp, my_genes)
+    matrix <- lapply(mat, function(x) as.matrix(colMeans(x  > 0))*100)
+    matrix <- lapply(matrix, as.data.frame)
+    matrix <- lapply(matrix, setNames, "percent expressed")
+    dge_list.add <- mapply(cbind, dge_list, matrix, SIMPLIFY=FALSE)
+    return(dge_list.add)
+  }
+
+left <- function (string,char) {
+  base::substr(string,1,char)
+}
+
+right <- function (string, char) {
+  base::substr(string,nchar(string)-(char-1),nchar(string))
+}
+
+cross_species_dendrogram <- function(species.1.obj, species.2.obj, 
+                                     species1.ident, species2.ident,
+                                     species1.res, species2.res,
+                                     species1.name, species2.name)
+{
+  ## Set objects to compare here (seuratObject)
+  obj_1 <- subset(species.1.obj, idents = species1.ident)
+  obj_2 <- subset(species.2.obj, idents = species2.ident)
+  
+  ### Extract there metadata for cluster ids (seuratObject@meta.data)
+  obj_1.meta <- obj_1@meta.data
+  obj_2.meta <- obj_2@meta.data
+  ## Set resolution to perform comparisons (STRING)
+  obj_1.res <- species1.res
+  obj_2.res <- species2.res
+  ### Set string for species parameter for id on dendrogram (STRING)
+  obj_1.species <- species1.name
+  obj_2.species <- species2.name
+  
+  # Extract counts matrix
+  obj_1.cMat <- obj_1@assays$RNA@counts
+  obj_2.cMat <- obj_2@assays$RNA@counts
+  
+  obj1.Sobj <- CreateSeuratObject(obj_1.cMat)
+  obj2.Sobj <- CreateSeuratObject(obj_2.cMat)
+  
+  # Find highly variable genes under the SCTransform framework
+  obj1.Sobj <- SCTransform(obj1.Sobj)
+  obj2.Sobj <- SCTransform(obj2.Sobj)
+  
+  # Extact highly variable genes
+  obj_1.genes <- VariableFeatures(obj1.Sobj)
+  obj_2.genes <- VariableFeatures(obj2.Sobj)
+  
+  # Intersect species hvg's to identify shared highly variable orthologs
+  orthologs <- intersect(obj_1.genes, obj_2.genes)
+  
+  # Use RelativeCounts function within Seurat to calculate TPM from counts matrix
+  obj_1.TPM <- RelativeCounts(obj_1.cMat, scale.factor = 10^6)
+  obj_2.TPM <- RelativeCounts(obj_2.cMat, scale.factor = 10^6)
+  
+  # Add some cluster meta data to cell names in the TPM matrices; will be used to identify whose 'who'
+  obj_1 <- SetIdent(obj_1, value = obj_1.res)
+  obj_2 <- SetIdent(obj_2, value = obj_2.res)
+  
+  colnames(obj_1.TPM) <- paste(colnames(obj_1.TPM), Idents(obj_1), sep = "_")
+  colnames(obj_2.TPM) <- paste(colnames(obj_2.TPM), Idents(obj_2), sep = "_")
+  
+  # Filter matrices by highly var orthologs to make file sizes more maneagable
+  obj_1.TPM <- obj_1.TPM[orthologs, ]
+  obj_2.TPM <- obj_2.TPM[orthologs, ]
+  
+  # Convert from sparseMatrix to matrix format to work well with base R functions
+  obj_1.TPM <- as.matrix(obj_1.TPM)
+  obj_2.TPM <- as.matrix(obj_2.TPM)
+  
+  # Tidy data and calculate gene-cluster averages across all groups
+  library(reshape2)
+  obj_1.melt <- melt(obj_1.TPM)
+  colnames(obj_1.melt) <- c("gene", "cell", "count")
+  obj_1.melt$cluster <- sub(".*[0-9]_", "", obj_1.melt$cell)
+  
+  obj_2.melt <- melt(obj_2.TPM)
+  colnames(obj_2.melt) <- c("gene", "cell", "count")
+  obj_2.melt$cluster <- sub(".*_", "", obj_2.melt$cell)
+  
+  library(dplyr)
+  obj_1.groupedbyClusterandGene_means <- obj_1.melt %>%
+    group_by(cluster, gene) %>%
+    summarise(mean = mean(count))
+  obj_2.groupedbyClusterandGene_means <- obj_2.melt %>%
+    group_by(cluster, gene) %>%
+    summarise(mean = mean(count))
+  
+  obj_1.groupedbyClusterandGene_means.df <- dcast(data = obj_1.groupedbyClusterandGene_means, formula = gene ~ cluster, fun.aggregate = sum, value.var = "mean")
+  rownames(obj_1.groupedbyClusterandGene_means.df) <- obj_1.groupedbyClusterandGene_means.df[, 1]
+  obj_1.groupedbyClusterandGene_means.df[, 1] <- NULL
+  
+  obj_2.groupedbyClusterandGene_means.df <- dcast(data = obj_2.groupedbyClusterandGene_means, formula = gene ~ cluster, fun.aggregate = sum, value.var = "mean")
+  rownames(obj_2.groupedbyClusterandGene_means.df) <- obj_2.groupedbyClusterandGene_means.df[, 1]
+  obj_2.groupedbyClusterandGene_means.df[, 1] <- NULL
+  
+  # Add psuedocount TPM of 50 to each matrix of mean expression
+  obj_1.groupedbyClusterandGene_means.df.p <- obj_1.groupedbyClusterandGene_means.df + 50
+  obj_2.groupedbyClusterandGene_means.df.p <- obj_2.groupedbyClusterandGene_means.df + 50
+  
+  # Calculate medians of average expression per gene
+  obj_1.median.mean <- apply(obj_1.groupedbyClusterandGene_means.df.p, MARGIN = 1, median)
+  obj_2.median.mean <- apply(obj_2.groupedbyClusterandGene_means.df.p, MARGIN = 1, median)
+  
+  # Add psuedocount TPM of 50 to each median
+  obj_1.median.mean.p <- obj_1.median.mean + 50
+  obj_2.median.mean.p <- obj_2.median.mean + 50
+  
+  # Perform klein transformation
+  obj_1.kleinTrans <- sweep(obj_1.groupedbyClusterandGene_means.df.p, 1, obj_1.median.mean, "/")
+  obj_2.kleinTrans <- sweep(obj_2.groupedbyClusterandGene_means.df.p, 1, obj_2.median.mean, "/")
+  
+  ## Append species identifier to column names
+  colnames(obj_1.kleinTrans) <- paste(obj_1.species, colnames(obj_1.kleinTrans), sep = "_")
+  colnames(obj_2.kleinTrans) <- paste(obj_2.species, colnames(obj_2.kleinTrans), sep = "_")
+  
+  # Combine matrices via bind columns(species clusters)
+  merged.obj <- cbind(obj_1.kleinTrans, obj_2.kleinTrans)
+  
+  # Perform log transformation(natural)
+  merged.obj.log1p <- log1p(merged.obj)
+  
+  # Calculate pearson distance metrices
+  pearson.dist.df <- as.dist((1 - cor(merged.obj.log1p)) / 2)
+  
+  # Run hclust and visualize dendogram
+  dendo <- hclust(pearson.dist.df, method = "ward.D2")
+  return(dendo)
+}
+
