@@ -36,7 +36,7 @@ website {<https://wlab.ethz.ch/cspa/#abstract>}.
 > *A Mass Spectrometric-Derived Cell Surface Protein Atlas*. PLoS One
 > <https://doi.org/10.1371/journal.pone.0121314>
 
-### Licenses
+## Licenses
 
 **Code :** MIT License, Copyright (c) 2020 Roosheel Patel
 
@@ -48,7 +48,7 @@ research compendium structure
 > implementation.*Journal of Archaeological Method and Theory*, 24(2),
 > 424-450.<https://doi.org/10.1007/s10816-015-9272-9>
 
-### Session Information
+## Session Information
 
 <details>
 
