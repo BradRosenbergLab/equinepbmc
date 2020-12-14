@@ -44,7 +44,7 @@ The organization of this repository was adapted from the rrtools research compen
 > Marwick, B. (2017). Computational reproducibility in archaeological research: Basic principles and a case study of their implementation.*Journal of Archaeological Method and Theory*, 24(2), 424-450.<https://doi.org/10.1007/s10816-015-9272-9>
 
 ### Session Information
-
+<details>
 >R version 3.6.2 (2019-12-12)
 Platform: x86_64-pc-linux-gnu (64-bit)
 Running under: CentOS Linux 7 (Core)
@@ -94,3 +94,4 @@ BLAS/LAPACK: /hpc/packages/minerva-centos7/intel/parallel_studio_xe_2019/compile
 [121] fansi_0.4.1           pillar_1.4.7          lattice_0.20-41       fastmap_1.0.1         httr_1.4.2            pkgbuild_1.1.0       
 [127] survival_3.2-7        glue_1.4.2            remotes_2.2.0         zip_2.1.1             spatstat_1.64-1       png_0.1-7            
 [133] bit_4.0.4             stringi_1.5.3         blob_1.2.1            memoise_1.1.0         irlba_2.3.3           future.apply_1.6.0   
+<details>
