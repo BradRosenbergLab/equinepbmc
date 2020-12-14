@@ -12,7 +12,7 @@ knitr::opts_chunk$set(
 Title <- "Single cell resolution landscape of equine peripheral blood mononuclear cells reveals diverse cell types including T-bet+ B cells."
 ```
 
-![epbmclogo](analysis/data/derived_data/horse_DNA_image.jpg){#id .class width=50px height=50px}
+![epbmclogo](analysis/data/derived_data/horse_DNA_image.jpg)
 
 # Single cell resolution landscape of equine peripheral blood mononuclear cells reveals diverse cell types including T-bet+ B cells.
 
