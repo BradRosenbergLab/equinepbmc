@@ -105,13 +105,12 @@ First, we read in the ESAT gene-cell matrices processed by the End Sequence Anal
 
 ```{r Reading in the ESAT processed gene-cell matrices, include=FALSE}
 ## Pull counts matrices directly from GEO
-#tmpdir <- tempdir()
-#url <- "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE148416&format=file"
-#file <- basename(url)
-#download.file(url, file)
-#untar(file, compressed = "gzip", exdir = tmpdir)
+tmpdir <- tempdir()
+url <- "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE148416&format=file"
+file <- basename(url)
+download.file(url, file)
+untar(file, compressed = "gzip", exdir = tmpdir)
 ## Extract and unzip gene-cell matrices only
-tmpdir <- "../data/raw_data/GSE148416_RAW/"
 gz.files <- lapply(list.files(path = tmpdir, full.names = T, pattern = "GSM"), gzfile)
 counts <- lapply(gz.files, read.table, sep = "\t")
 names(counts) <- strsplit(list.files(tmpdir), split = "_") %>% sapply("[[", 2)
