@@ -16,7 +16,7 @@ Title <- "Single cell resolution landscape of equine peripheral blood mononuclea
 
 This repository contains the data analysis scripts and code for our paper:
 
-> Roosheel Patel*, Joy E. Tomlinson*, Thomas J. Divers, Gerlinde R. Van de Walle, Brad Rosenberg, (2020). *Single cell resolution landscape of equine peripheral blood mononuclear cells reveals diverse cell types including T-bet+ B cells*.
+> Roosheel Patel*, Joy E. Tomlinson*, Thomas J. Divers, Gerlinde R. Van de Walle, Brad Rosenberg, (2020). *Single cell resolution landscape of equine peripheral blood mononuclear cells reveals diverse cell types including T-bet+ B cells*. BMC Biology
 
 Our pre-print is online here:
 
@@ -44,6 +44,9 @@ The organization of this repository was adapted from the rrtools research compen
 > Marwick, B. (2017). Computational reproducibility in archaeological research: Basic principles and a case study of their implementation.*Journal of Archaeological Method and Theory*, 24(2), 424-450.<https://doi.org/10.1007/s10816-015-9272-9>
 
 ## Session Information
+
+The following session information (compute environment and R/package versions) will reproduce the analysis and figures generated in the manuscript.
+
 <details>
 >R version 3.6.2 (2019-12-12)
 Platform: x86_64-pc-linux-gnu (64-bit)
