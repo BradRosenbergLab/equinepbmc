@@ -46,6 +46,7 @@ Putative “doublet” cell barcodes were identified and removed from downstream
 ```{r echo = FALSE, message=FALSE}
 ### Load packages necessary for script
 library(renv)
+library(details)
 library(Matrix)
 library(AnnotationDbi)
 library(tibble)

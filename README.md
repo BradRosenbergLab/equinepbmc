@@ -125,6 +125,4 @@ research compendium structure
 > \[127\] survival\_3.2-7 glue\_1.4.2 remotes\_2.2.0 zip\_2.1.1
 > spatstat\_1.64-1 png\_0.1-7  
 > \[133\] bit\_4.0.4 stringi\_1.5.3 blob\_1.2.1 memoise\_1.1.0
-> irlba\_2.3.3 future.apply\_1.6.0  
-> 
-> <details>
+> irlba\_2.3.3 future.apply\_1.6.0
