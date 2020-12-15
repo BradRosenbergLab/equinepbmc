@@ -1,5 +1,9 @@
 
-![epbmclogo](analysis/data/derived_data/horse_DNA_image.jpg)
+<p align="center">
+
+<img width="460" height="300" src="https://github.com/BradRosenbergLab/equinepbmc/blob/307dec78c39ca7dec46d7c9235574fe2db82feec/analysis/data/derived_data/horse_DNA_image.jpg/460/300">
+
+</p>
 
 # Single cell resolution landscape of equine peripheral blood mononuclear cells reveals diverse cell types including T-bet+ B cells.
 
@@ -16,7 +20,7 @@ Our pre-print is online here:
 > Roosheel Patel*, Joy E. Tomlinson*, Thomas J. Divers, Gerlinde R. Van
 > de Walle, Brad Rosenberg, (2020). *Single cell resolution landscape of
 > equine peripheral blood mononuclear cells reveals diverse cell types
-> including T-bet+ B cells* biorxiv, Accessed 14 Dec 2020. Online at
+> including T-bet+ B cells* biorxiv, Accessed 15 Dec 2020. Online at
 > <https://doi.org/10.1101/2020.05.05.077362>
 
 ## Contents
