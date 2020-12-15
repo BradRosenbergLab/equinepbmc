@@ -1,23 +1,24 @@
 
 ![epbmclogo](analysis/data/derived_data/horse_DNA_image.png#style=centerme)
 
-# Single cell resolution landscape of equine peripheral blood mononuclear cells reveals diverse cell types including T-bet+ B cells.
+# Single cell resolution landscape of equine peripheral blood mononuclear cells reveals diverse cell types including T-bet<sup>+</sup> B cells.
 
 This repository contains the data analysis scripts and code for our
 paper:
 
-> Roosheel Patel*, Joy E. Tomlinson*, Thomas J. Divers, Gerlinde R. Van
-> de Walle, Brad Rosenberg, (2020). *Single cell resolution landscape of
-> equine peripheral blood mononuclear cells reveals diverse cell types
-> including T-bet+ B cells*. BMC Biology <https://doi.org/XXXX>
+> Roosheel S. Patel*, Joy E. Tomlinson*, Thomas J. Divers, Gerlinde R.
+> Van de Walle, Brad R. Rosenberg, (2020). *Single cell resolution
+> landscape of equine peripheral blood mononuclear cells reveals diverse
+> cell types including T-bet+ B cells*. BMC Biology
+> <https://doi.org/XXXX>
 
 Our pre-print is online here:
 
-> Roosheel Patel*, Joy E. Tomlinson*, Thomas J. Divers, Gerlinde R. Van
-> de Walle, Brad Rosenberg, (2020). *Single cell resolution landscape of
-> equine peripheral blood mononuclear cells reveals diverse cell types
-> including T-bet+ B cells* biorxiv, Accessed 15 Dec 2020. Online at
-> <https://doi.org/10.1101/2020.05.05.077362>
+> Roosheel S. Patel*, Joy E. Tomlinson*, Thomas J. Divers, Gerlinde R.
+> Van de Walle, Brad R. Rosenberg, (2020). *Single cell resolution
+> landscape of equine peripheral blood mononuclear cells reveals diverse
+> cell types including T-bet+ B cells* biorxiv, Accessed 15 Dec 2020.
+> Online at <https://doi.org/10.1101/2020.05.05.077362>
 
 ## Contents
 
@@ -31,8 +32,8 @@ The **analysis** directory contains:
 ## Additional files required for analysis
 
 For surface annotation of differentially expressed genes, surface
-protein annotations were pulled from the Cell Surface Protein Atlas
-website {<https://wlab.ethz.ch/cspa/#abstract>}.
+protein annotations were pulled from the [Cell Surface Protein Atlas
+website](https://wlab.ethz.ch/cspa/#abstract).
 
 > Bausch-Fluck D, Hofmann A, Bock T, Frei AP, Cerciello F, et al. (2015)
 > *A Mass Spectrometric-Derived Cell Surface Protein Atlas*. PLoS One
