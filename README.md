@@ -1,9 +1,5 @@
 
-<p align="center">
-
-<img width="460" height="300" src="https://github.com/BradRosenbergLab/equinepbmc/blob/307dec78c39ca7dec46d7c9235574fe2db82feec/analysis/data/derived_data/horse_DNA_image.jpg/460/300">
-
-</p>
+![epbmclogo](analysis/data/derived_data/horse_DNA_image.png)
 
 # Single cell resolution landscape of equine peripheral blood mononuclear cells reveals diverse cell types including T-bet+ B cells.
 
