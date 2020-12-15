@@ -31,6 +31,7 @@ library(ggtree)
 library(edgeR)
 library(tidyr)
 library(readr)
+library(inflection)
 
 #### Hack Seurat functions to plot geom_point (shape) and geom_text for label clusters, underlayed with a circles. This is key, as it identifies where the labels are plotted on the UMAP
 GetXYAesthetics <- function(plot, geom = 'GeomPoint', plot.first = TRUE) {
@@ -695,8 +696,25 @@ cross_species_dendrogram <- function(species.1.obj, species.2.obj,
   obj_1.genes <- VariableFeatures(obj1.Sobj)
   obj_2.genes <- VariableFeatures(obj2.Sobj)
   
+  obj1.varplot <- VariableFeaturePlot(obj1.Sobj, log = T)$data %>% arrange(residual_variance)
+  obj2.varplot <- VariableFeaturePlot(obj2.Sobj, log = T)$data %>% arrange(residual_variance)
+  
+  library(inflection)
+  obj1.inf <- ese(x = 1:length(obj1.varplot[,2]), 
+                  y = obj1.varplot[,2], 
+                  index = 1)
+  obj1.inf.pt <- round(length(obj1.varplot[,2]) - (length(obj1.varplot[,2]) - obj1.inf[,3])/2)
+  obj_1.genes <- rownames(obj1.varplot)[obj1.inf.pt:length(rownames(obj1.varplot))]
+  
+  obj2.inf <- ese(x = 1:length(obj2.varplot[,2]), 
+                  y = obj2.varplot[,2] %>% sort(), 
+                  index = 1)
+  obj2.inf.pt <- round(length(obj2.varplot[,2]) - (length(obj2.varplot[,2]) - obj2.inf[,3])/2)
+  obj_2.genes <- rownames(obj2.varplot)[obj2.inf.pt:length(rownames(obj2.varplot))]
+  
+  
   # Intersect species hvg's to identify shared highly variable orthologs
-  orthologs <- intersect(obj_1.genes, obj_2.genes)
+  orthologs <- intersect(obj_1.genes,obj_2.genes)
   
   # Use RelativeCounts function within Seurat to calculate TPM from counts matrix
   obj_1.TPM <- RelativeCounts(obj_1.cMat, scale.factor = 10^6)
