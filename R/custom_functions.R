@@ -33,7 +33,8 @@ library(tidyr)
 library(readr)
 library(inflection)
 
-#### Hack Seurat functions to plot geom_point (shape) and geom_text for label clusters, underlayed with a circles. This is key, as it identifies where the labels are plotted on the UMAP
+# Modify Seurat functions to plot geom_point (shape) and geom_text for label clusters, underlayed with a circles. 
+# This is key, as it identifies where the labels are plotted on the UMAP
 GetXYAesthetics <- function(plot, geom = 'GeomPoint', plot.first = TRUE) {
   geoms <- sapply(
     X = plot$layers,
@@ -56,97 +57,10 @@ GetXYAesthetics <- function(plot, geom = 'GeomPoint', plot.first = TRUE) {
   return(list('x' = x, 'y' = y))
 }
 
-## Custom function to add circles labels
+# Custom function to add circles labels to UMAP visualizations
 custom.LabelClusters <- function(
   plot, # Use DimPlot to generate base ggplot to apply function
-  id,   # Th
-  clusters = NULL,
-  labels = NULL,
-  split.by = NULL,
-  repel = F,
-  shape = 21,
-  colors = colors,
-  circle.size = circle.size,
-  text.size = text.size,
-  text.color = text.color,
-  ...
-) {
-  xynames <- unlist(x = GetXYAesthetics(plot = plot), use.names = TRUE)
-  if (!id %in% colnames(x = plot$data)) {
-    stop("Cannot find variable ", id, " in plotting data")
-  }
-  if (!is.null(x = split.by) && !split.by %in% colnames(x = plot$data)) {
-    warning("Cannot find splitting variable ", id, " in plotting data")
-    split.by <- NULL
-  }
-  data <- plot$data[, c(xynames, id, split.by)]
-  possible.clusters <- as.character(x = na.omit(object = unique(x = data[, id])))
-  groups <- clusters %||% as.character(x = na.omit(object = unique(x = data[, id])))
-  if (any(!groups %in% possible.clusters)) {
-    stop("The following clusters were not found: ", paste(groups[!groups %in% possible.clusters], collapse = ","))
-  }
-  labels.loc <- lapply(
-    X = groups,
-    FUN = function(group) {
-      data.use <- data[data[, id] == group, , drop = FALSE]
-      data.medians <- if (!is.null(x = split.by)) {
-        do.call(
-          what = 'rbind',
-          args = lapply(
-            X = unique(x = data.use[, split.by]),
-            FUN = function(split) {
-              medians <- apply(
-                X = data.use[data.use[, split.by] == split, xynames, drop = FALSE],
-                MARGIN = 2,
-                FUN = median,
-                na.rm = TRUE
-              )
-              medians <- as.data.frame(x = t(x = medians))
-              medians[, split.by] <- split
-              return(medians)
-            }
-          )
-        )
-      } else {
-        as.data.frame(x = t(x = apply(
-          X = data.use[, xynames, drop = FALSE],
-          MARGIN = 2,
-          FUN = median,
-          na.rm = TRUE
-        )))
-      }
-      data.medians[, id] <- group
-      return(data.medians)
-    }
-  )
-  labels.loc <- do.call(what = 'rbind', args = labels.loc)
-  labels <- labels %||% groups
-  if (length(x = unique(x = labels.loc[, id])) != length(x = labels)) {
-    stop("Length of labels (", length(x = labels),  ") must be equal to the number of clusters being labeled (", length(x = labels.loc), ").")
-  }
-  names(x = labels) <- groups
-  for (group in groups) {
-    labels.loc[labels.loc[, id] == group, id] <- labels[group]
-  }
-  geom.use <- ifelse(test = repel, yes = geom_point, no = geom_label)
-  plot <- plot + geom.use(
-    data = labels.loc, size = circle.size, shape=shape, stroke = 0.66, col = "gray17",
-    mapping = aes_string(x = xynames['x'], y = xynames['y'], label = id),
-    ...
-  ) + geom_text( 
-    size = text.size,
-    color = text.color,
-    data = labels.loc, col = "gray17",
-    mapping = aes_string(x = xynames['x'], y = xynames['y'], label = id),
-    ...
-  )
-  return(plot)
-}
-
-## Custom function to add circles labels
-custom.LabelClusters <- function(
-  plot, # Use DimPlot to generate base ggplot to apply function
-  id,   # Th
+  id,   # The seurat cluster identifier
   clusters = NULL,
   labels = NULL,
   split.by = NULL,
@@ -226,7 +140,7 @@ custom.LabelClusters <- function(
   )
   return(plot)
 }
-
+# Alternative, more refined function to add circle labels to UMAP visualizations
 cluster.umap.plot <- function(object, 
                               group.ident = "integrated_snn_res.1",
                               colors = legocolors$hex[-1],
@@ -293,7 +207,7 @@ cluster.umap.plot <- function(object,
   }
   print(p2)
 }
-
+# Custom FeaturePlot function to generate figure-ready expression FeaturePlots
 FeaturePlot.c <- function(object, features){FeaturePlot(object = object, 
                                                         features = features, 
                                                         min.cutoff = "q2", 
@@ -302,11 +216,13 @@ FeaturePlot.c <- function(object, features){FeaturePlot(object = object,
                                                                  "darkgreen"), 
                                                         order = T) + NoAxes() }
 
+# Custom theme function to blanket format manuscript figures/panels
 theme.c <- theme(axis.line = element_blank(),
                  aspect.ratio = 1,
                  panel.background = element_blank(),
                  panel.border = element_rect(color = "black", fill = NA, size = 0.25))
 
+# Functions to read and write excel workbooks for DGE table output
 Workbook <- function(x, file.name){
   wb <- createWorkbook()
   ## Loop through the list of split tables as well as their names
@@ -320,8 +236,6 @@ Workbook <- function(x, file.name){
   ## Save workbook to working directory
   saveWorkbook(wb, file = file.name, overwrite = TRUE)
 }
-
-library(readxl)    
 read_excel_allsheets <- function(filename, tibble = FALSE) {
   # I prefer straight data.frames
   # but if you like tidyverse tibbles (the default with read_excel)
@@ -333,6 +247,8 @@ read_excel_allsheets <- function(filename, tibble = FALSE) {
   x
 }
 
+# Gene detection function to extract genes expressed in user-defined percentage of each cluster in Seurat object
+# Cluster is set based on current object identity (can be changed/set by using the SetIdent function)
 GeneDetector <- function(SeuratObj, threshold) { 
   counts <- SeuratObj
   genes <- c()
@@ -350,6 +266,7 @@ GeneDetector <- function(SeuratObj, threshold) {
   return(genes_list)
 }
 
+# edgeR contrast helper function to automate contrast generation
 contrastConstructor <- 
   function(clusterIDs,
            clusterIDs.2 = TRUE,
@@ -397,7 +314,7 @@ contrastConstructor <-
       return(contrastString)
     }
   }
-
+# edgeR helper function to automate contrast matrix given a set of cluster identities
 generateContrasts <- function(cluster.numbers, prefix){
   for(i in 1:length(cluster.numbers)){
     contrastConstructor(
@@ -409,6 +326,7 @@ generateContrasts <- function(cluster.numbers, prefix){
   }
 }
 
+# Custom tree function to plot results of hierarchical clustering analyses
 plottree <- function (object, ...) 
 {
   library(ape)
@@ -419,6 +337,7 @@ plottree <- function (object, ...)
   plot.phylo(x = data.tree, direction = "downwards", ...)
 }
 
+# Custom function to generate publication-ready heatmaps
 prettyheatmap <- function(object, 
                           gene.list,
                           text.size = 8,
@@ -519,6 +438,7 @@ prettyheatmap <- function(object,
   }
 }
 
+# Custom function to generate publication-ready dotplots
 prettyDots <-
   function(dotplot,
            colors,
@@ -586,6 +506,7 @@ prettyDots <-
     print(plot.noleg)
   }
 
+# Custom function to generate edgeR fit from Seurat object input
 edgeR_create_fit <- function(object, gene.detection.thres = 0.10, celltype.ident = "order")
   {
 ## Set the object identity 
@@ -629,6 +550,7 @@ names(return_list) <- c("fit", "counts", "design")
 return(return_list)
 }
 
+# Custom function to append % expression of DEG/feature to the edgeR topTags output
 add.percent.expression <- 
   function(dge_list, object, ident, subset = NULL, group.ident = NULL){
     if(!is.null(subset)){
@@ -654,14 +576,17 @@ add.percent.expression <-
     return(dge_list.add)
   }
 
+# Function to extract n-mer sequence from a character string from the left
 left <- function (string,char) {
   base::substr(string,1,char)
 }
-
+# Function to extract n-mer sequence from a character string from the right
 right <- function (string, char) {
   base::substr(string,nchar(string)-(char-1),nchar(string))
 }
 
+# Cross-species hierarchical clustering.
+# Inspired by Zillonis et al. Immunity publication. 
 cross_species_dendrogram <- function(species.1.obj, species.2.obj, 
                                      species1.ident, species2.ident,
                                      species1.res, species2.res,
