@@ -1,10 +1,10 @@
 ---
 title: "Single cell resolution landscape of equine peripheral blood mononuclear cells reveals diverse cell types including T-bet+ B cells."
-author: "Roosheel Patel*, Joy E. Tomlinson*, Thomas J. Divers, Gerlinde R. Van de Walle, Brad Rosenberg, "
+author: "Roosheel Patel*, Joy E. Tomlinson*, Thomas J. Divers, Gerlinde R. Van de Walle, Brad Rosenberg"
 date: "11/23/2020"
 output: html_document
 ---
-
+* indicates co-first authorship
 
 ```{r setup, echo = FALSE}
 knitr::opts_chunk$set(
@@ -19,7 +19,12 @@ knitr::opts_chunk$set(
 ```
 
 ## Abstract
-  Traditional laboratory model organisms represent a small fraction of the diversity of multicellular life, and findings in any given experimental model often do not translate to other species. Immunology research in non-traditional model organisms can be advantageous or even necessary (e.g. for host-pathogen interaction studies), but presents multiple challenges, many stemming from an incomplete understanding of potentially species-specific immune cell types, frequencies and phenotypes. Identifying and characterizing immune cells in such organisms is frequently limited by the availability of species-reactive immunophenotyping reagents for flow cytometry, and insufficient prior knowledge of cell type-defining markers. Here, we demonstrate the utility of single cell RNA sequencing (scRNA-Seq) to characterize immune cells for which traditional experimental tools are limited. Specifically, we used scRNA-Seq to comprehensively define the cellular diversity of equine peripheral blood mononuclear cells (PBMCs) from healthy horses across different breeds, ages, and sexes. We identified 30 cell type clusters partitioned into five major populations: Monocytes/Dendritic Cells, B cells, CD3+PRF1+ lymphocytes, CD3+PRF1- lymphocytes, and Basophils. Comparative analyses revealed many cell populations analogous to human PBMC, including transcriptionally heterogeneous monocytes and distinct dendritic cell subsets (cDC1, cDC2, plasmacytoid DC). Remarkably, we found that a majority of the equine peripheral B cell compartment is comprised of T-bet+ B cells; an immune cell subpopulation typically associated with chronic infection and inflammation in human and mouse.
+  Background: Traditional laboratory model organisms represent a small fraction of the diversity of multicellular life, and findings in any given experimental model often do not translate to other species. 
+Immunology research in non-traditional model organisms can be advantageous or even necessary, such as when studying host-pathogen interactions. However, such research presents multiple challenges, many stemming from an incomplete understanding of potentially species-specific immune cell types, frequencies and phenotypes. Identifying and characterizing immune cells in such organisms is frequently limited by the availability of species-reactive immunophenotyping reagents for flow cytometry, and insufficient prior knowledge of cell type-defining markers. 
+
+Results: Here, we demonstrate the utility of single cell RNA sequencing (scRNA-Seq) to characterize immune cells for which traditional experimental tools are limited. Specifically, we used scRNA-Seq to comprehensively define the cellular diversity of equine peripheral blood mononuclear cells (PBMCs) from healthy horses across different breeds, ages, and sexes. We identified 30 cell type clusters partitioned into five major populations: Monocytes/Dendritic Cells, B cells, CD3+PRF1+ lymphocytes, CD3+PRF1- lymphocytes, and Basophils. Comparative analyses revealed many cell populations analogous to human PBMC, including transcriptionally heterogeneous monocytes and distinct dendritic cell subsets (cDC1, cDC2, plasmacytoid DC). Remarkably, we found that a majority of the equine peripheral B cell compartment is comprised of T-bet+ B cells; an immune cell subpopulation typically associated with chronic infection and inflammation in human and mouse. 
+
+Conclusions: Taken together, our results demonstrate the potential of scRNA-Seq for cellular analyses in non-traditional model organisms, and form the basis for an immune cell atlas of horse peripheral blood.
 
 **Objective: To identify and characterize the immune cell types in the horse peripheral blood using single cell RNA sequencing**
 
@@ -304,7 +309,7 @@ ePBMC.integrated.obj <- NormalizeData(ePBMC.integrated.obj)
 ePBMC.integrated.obj <- BuildClusterTree(ePBMC.integrated.obj, assay = "RNA", dims = 1:25)
 ```
 
-Next, we perform additional filtering of doublets based on our knowledge of established immune cell markers. In theory, CD3G+ T cells should not express B cell markers such as MS4A1 or CD19, or immunoglobulins.
+Next, cell cycle analysis revealed cluster 21 being composed of cycling and non-cycling cells. To account for this, we manually split cycling cells from cluster 21 from the non-cycling cells in cluster 21.
 
 ```{r Additional step: Identifying cycling cells in the CD3+ lymphocyte compartment}
 ePBMC.integrated.obj <- CellCycleScoring(
@@ -314,7 +319,7 @@ ePBMC.integrated.obj <- CellCycleScoring(
     FALSE
 )
 reg.plot <- DimPlot(ePBMC.integrated.obj, group.by = "Phase")
-# Manually split this cluster up into two clusters: cluster 21-G2M; cluster 21-S
+# Manually split this cluster up into two clusters: separate cycling cells from non-cycling cells
 ePBMC.integrated.obj <- StashIdent(object = ePBMC.integrated.obj, "clusters")
 ``` 
 
@@ -442,7 +447,7 @@ major_dge_list <- add.percent.expression(
 major.groups <- unique(ePBMC.integrated.obj$MajorGroup)
 
 b.dge.list <- add.percent.expression(
-  dge_list = mono.dge.list,
+  dge_list = subset_dge_list,
   object = ePBMC.integrated.obj,
   ident = "order",
   group.ident = "MajorGroup",
@@ -450,7 +455,7 @@ b.dge.list <- add.percent.expression(
 )
 
 monodc.dge.list <- add.percent.expression(
-  dge_list = mono.dge.list,
+  dge_list = subset_dge_list,
   object = ePBMC.integrated.obj,
   ident = "order",
   group.ident = "MajorGroup",
@@ -458,7 +463,7 @@ monodc.dge.list <- add.percent.expression(
 )
 
 basophil.dge.list <- add.percent.expression(
-  dge_list = mono.dge.list,
+  dge_list = subset_dge_list,
   object = ePBMC.integrated.obj,
   ident = "order",
   group.ident = "MajorGroup",
@@ -654,7 +659,7 @@ p1 + annotation_custom(ggplotGrob(p2),
 ### Figure 2B. Stacked bars of cell types frequencies in monocyte/DC compartment across horses
 
 ```{r Stacked bars}
-## Remove contaminating nuetrophils (low UMI)
+## Remove contaminating neutrophils (low UMI)
 Mcells.sub <- subset(Mcells, idents = 29, invert = T)
 Mcells.sub$order <- droplevels(Mcells.sub$order)
 horse_mono.dc.cluster_freq.table <- table(Mcells.sub$Subject, Mcells.sub$order) %>% melt()
