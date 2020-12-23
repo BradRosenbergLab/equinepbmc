@@ -47,7 +47,7 @@ The organization of this repository was adapted from the rrtools research compen
 
 ## Session Information
 
-Session information (computer environment and R/package versions) were used to generate the analyses and figures in the manuscript:
+Session information (computer environment and R/package versions) used to generate the analyses and figures in the manuscript:
 
 <details>
 >R version 3.6.2 (2019-12-12)
