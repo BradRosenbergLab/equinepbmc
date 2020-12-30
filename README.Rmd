@@ -18,7 +18,7 @@ Title <- "Single cell resolution landscape of equine peripheral blood mononuclea
 
 This repository contains the data analysis scripts and code for our paper:
 
-> Roosheel S. Patel*, Joy E. Tomlinson*, Thomas J. Divers, Gerlinde R. Van de Walle, Brad R. Rosenberg, (2020). *Single cell resolution landscape of equine peripheral blood mononuclear cells reveals diverse cell types including T-bet+ B cells*. BMC Biology <https://doi.org/XXXX>
+> Roosheel S. Patel*, Joy E. Tomlinson*, Thomas J. Divers, Gerlinde R. Van de Walle, Brad R. Rosenberg, (2020). *Single cell resolution landscape of equine peripheral blood mononuclear cells reveals diverse cell types including T-bet+ B cells*. BMC Biology <https://doi.org/10.1186/s12915-020-00947-5>
 
 Our pre-print is online here:
 
