@@ -13,7 +13,6 @@ Title <- "Single cell resolution landscape of equine peripheral blood mononuclea
 ```
 
 |                                                                             ![epbmclogo](analysis/data/derived_data/horse_DNA_image.png#style=centerme)                                                   
-
 # Single cell resolution landscape of equine peripheral blood mononuclear cells reveals diverse cell types including T-bet<sup>+</sup> B cells.
 
 This repository contains the data analysis scripts and code for our paper:
