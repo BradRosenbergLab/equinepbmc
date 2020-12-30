@@ -27,9 +27,13 @@ library(factoextra)
 library(ComplexHeatmap)
 library(circlize)
 library(reshape2)
-library(ggtree)
+library(edgeR)
+library(tidyr)
+library(readr)
+library(inflection)
 
-#### Hack Seurat functions to plot geom_point (shape) and geom_text for label clusters, underlayed with a circles. This is key, as it identifies where the labels are plotted on the UMAP
+# Modify Seurat functions to plot geom_point (shape) and geom_text for label clusters, underlayed with a circles. 
+# This is key, as it identifies where the labels are plotted on the UMAP
 GetXYAesthetics <- function(plot, geom = 'GeomPoint', plot.first = TRUE) {
   geoms <- sapply(
     X = plot$layers,
@@ -52,97 +56,10 @@ GetXYAesthetics <- function(plot, geom = 'GeomPoint', plot.first = TRUE) {
   return(list('x' = x, 'y' = y))
 }
 
-## Custom function to add circles labels
+# Custom function to add circles labels to UMAP visualizations
 custom.LabelClusters <- function(
   plot, # Use DimPlot to generate base ggplot to apply function
-  id,   # Th
-  clusters = NULL,
-  labels = NULL,
-  split.by = NULL,
-  repel = F,
-  shape = 21,
-  colors = colors,
-  circle.size = circle.size,
-  text.size = text.size,
-  text.color = text.color,
-  ...
-) {
-  xynames <- unlist(x = GetXYAesthetics(plot = plot), use.names = TRUE)
-  if (!id %in% colnames(x = plot$data)) {
-    stop("Cannot find variable ", id, " in plotting data")
-  }
-  if (!is.null(x = split.by) && !split.by %in% colnames(x = plot$data)) {
-    warning("Cannot find splitting variable ", id, " in plotting data")
-    split.by <- NULL
-  }
-  data <- plot$data[, c(xynames, id, split.by)]
-  possible.clusters <- as.character(x = na.omit(object = unique(x = data[, id])))
-  groups <- clusters %||% as.character(x = na.omit(object = unique(x = data[, id])))
-  if (any(!groups %in% possible.clusters)) {
-    stop("The following clusters were not found: ", paste(groups[!groups %in% possible.clusters], collapse = ","))
-  }
-  labels.loc <- lapply(
-    X = groups,
-    FUN = function(group) {
-      data.use <- data[data[, id] == group, , drop = FALSE]
-      data.medians <- if (!is.null(x = split.by)) {
-        do.call(
-          what = 'rbind',
-          args = lapply(
-            X = unique(x = data.use[, split.by]),
-            FUN = function(split) {
-              medians <- apply(
-                X = data.use[data.use[, split.by] == split, xynames, drop = FALSE],
-                MARGIN = 2,
-                FUN = median,
-                na.rm = TRUE
-              )
-              medians <- as.data.frame(x = t(x = medians))
-              medians[, split.by] <- split
-              return(medians)
-            }
-          )
-        )
-      } else {
-        as.data.frame(x = t(x = apply(
-          X = data.use[, xynames, drop = FALSE],
-          MARGIN = 2,
-          FUN = median,
-          na.rm = TRUE
-        )))
-      }
-      data.medians[, id] <- group
-      return(data.medians)
-    }
-  )
-  labels.loc <- do.call(what = 'rbind', args = labels.loc)
-  labels <- labels %||% groups
-  if (length(x = unique(x = labels.loc[, id])) != length(x = labels)) {
-    stop("Length of labels (", length(x = labels),  ") must be equal to the number of clusters being labeled (", length(x = labels.loc), ").")
-  }
-  names(x = labels) <- groups
-  for (group in groups) {
-    labels.loc[labels.loc[, id] == group, id] <- labels[group]
-  }
-  geom.use <- ifelse(test = repel, yes = geom_point, no = geom_label)
-  plot <- plot + geom.use(
-    data = labels.loc, size = circle.size, shape=shape, stroke = 0.66, col = "gray17",
-    mapping = aes_string(x = xynames['x'], y = xynames['y'], label = id),
-    ...
-  ) + geom_text( 
-    size = text.size,
-    color = text.color,
-    data = labels.loc, col = "gray17",
-    mapping = aes_string(x = xynames['x'], y = xynames['y'], label = id),
-    ...
-  )
-  return(plot)
-}
-
-## Custom function to add circles labels
-custom.LabelClusters <- function(
-  plot, # Use DimPlot to generate base ggplot to apply function
-  id,   # Th
+  id,   # The seurat cluster identifier
   clusters = NULL,
   labels = NULL,
   split.by = NULL,
@@ -222,7 +139,7 @@ custom.LabelClusters <- function(
   )
   return(plot)
 }
-
+# Alternative, more refined function to add circle labels to UMAP visualizations
 cluster.umap.plot <- function(object, 
                               group.ident = "integrated_snn_res.1",
                               colors = legocolors$hex[-1],
@@ -289,7 +206,7 @@ cluster.umap.plot <- function(object,
   }
   print(p2)
 }
-
+# Custom FeaturePlot function to generate figure-ready expression FeaturePlots
 FeaturePlot.c <- function(object, features){FeaturePlot(object = object, 
                                                         features = features, 
                                                         min.cutoff = "q2", 
@@ -298,11 +215,13 @@ FeaturePlot.c <- function(object, features){FeaturePlot(object = object,
                                                                  "darkgreen"), 
                                                         order = T) + NoAxes() }
 
+# Custom theme function to blanket format manuscript figures/panels
 theme.c <- theme(axis.line = element_blank(),
                  aspect.ratio = 1,
                  panel.background = element_blank(),
                  panel.border = element_rect(color = "black", fill = NA, size = 0.25))
 
+# Functions to read and write excel workbooks for DGE table output
 Workbook <- function(x, file.name){
   wb <- createWorkbook()
   ## Loop through the list of split tables as well as their names
@@ -316,8 +235,6 @@ Workbook <- function(x, file.name){
   ## Save workbook to working directory
   saveWorkbook(wb, file = file.name, overwrite = TRUE)
 }
-
-library(readxl)    
 read_excel_allsheets <- function(filename, tibble = FALSE) {
   # I prefer straight data.frames
   # but if you like tidyverse tibbles (the default with read_excel)
@@ -329,7 +246,9 @@ read_excel_allsheets <- function(filename, tibble = FALSE) {
   x
 }
 
-GeneDetector <- function(SeuratObj, threshold, listname) { 
+# Gene detection function to extract genes expressed in user-defined percentage of each cluster in Seurat object
+# Cluster is set based on current object identity (can be changed/set by using the SetIdent function)
+GeneDetector <- function(SeuratObj, threshold) { 
   counts <- SeuratObj
   genes <- c()
   for (i in 1:(length(unique(SeuratObj@active.ident))))
@@ -343,62 +262,44 @@ GeneDetector <- function(SeuratObj, threshold, listname) {
     genes <- c(genes, rownames(filtered_df))
   } 
   genes_list <- unique(genes)
-  assign(x = listname, value = genes_list, envir = globalenv())
+  return(genes_list)
 }
 
+# edgeR contrast helper function to automate contrast generation
 contrastConstructor <- 
   function(clusterIDs,
            clusterIDs.2 = TRUE,
            design,
            makeContrast = FALSE,
            name = NULL){
-    clusterIDs
     clusterIDs.char <- as.character(clusterIDs)
-    clusterIDs.char
     clusterIDs.char.celltype <- paste("celltype", clusterIDs.char, sep = "")
-    clusterIDs.char.celltype
     clusterIDs.char.celltype.combined <- paste(clusterIDs.char.celltype, collapse = "+")
-    clusterIDs.char.celltype.combined
     clusterIDs.length <- as.character(length(clusterIDs.char.celltype))
-    clusterIDs.length
     clusterIDs.char.celltype.combined.parantheses <- paste0("(", clusterIDs.char.celltype.combined, ")")
     clusterIDs.ready <- paste(clusterIDs.char.celltype.combined.parantheses, 
                               clusterIDs.length, 
                               sep = "/", collapse = "")
-    clusterIDs.ready
-    
     if(missing(clusterIDs.2))
     {
       otherClusterIDs <- setdiff(x = colnames(design), 
                                  y = clusterIDs.char.celltype)
-      otherClusterIDs.num <- grep("[[:digit:]]", otherClusterIDs, value = T)
+      otherClusterIDs.num <- grep("celltype[[:digit:]]", otherClusterIDs, value = T)
       otherClusterIDs.length <- as.character(length(otherClusterIDs.num))
-      otherClusterIDs.length
       otherClusterIDs.combined <- paste(otherClusterIDs.num, collapse = "+")
-      otherClusterIDs.combined
       otherClusterIDs.combined.parentheses <- paste0("(", otherClusterIDs.combined, ")")
-      otherClusterIDs.combined.parentheses
       otherClusterIDs.ready <- paste(otherClusterIDs.combined.parentheses, otherClusterIDs.length, sep = "/", collapse = "")
-      otherClusterIDs.ready
       contrastString <- paste(clusterIDs.ready, otherClusterIDs.ready, sep = "-")
-      contrastString
     }else{
-      clusterIDs.2
       clusterIDs.2.char <- as.character(clusterIDs.2)
-      clusterIDs.2.char
       clusterIDs.2.char.celltype <- paste("celltype", clusterIDs.2.char, sep = "")
-      clusterIDs.2.char.celltype
       clusterIDs.2.char.celltype.combined <- paste(clusterIDs.2.char.celltype, collapse = "+")
-      clusterIDs.2.char.celltype.combined
       clusterIDs.2.length <- as.character(length(clusterIDs.2.char.celltype))
-      clusterIDs.2.length
       clusterIDs.2.char.celltype.combined.parantheses <- paste0("(", clusterIDs.2.char.celltype.combined, ")")
       clusterIDs.2.ready <- paste(clusterIDs.2.char.celltype.combined.parantheses, 
                                   clusterIDs.2.length, 
                                   sep = "/", collapse = "")
-      clusterIDs.2.ready
       contrastString <- paste(clusterIDs.ready, clusterIDs.2.ready, sep = "-")
-      
     }
     if(makeContrast == T){
       if(missing(name)){
@@ -412,7 +313,7 @@ contrastConstructor <-
       return(contrastString)
     }
   }
-
+# edgeR helper function to automate contrast matrix given a set of cluster identities
 generateContrasts <- function(cluster.numbers, prefix){
   for(i in 1:length(cluster.numbers)){
     contrastConstructor(
@@ -424,7 +325,7 @@ generateContrasts <- function(cluster.numbers, prefix){
   }
 }
 
-
+# Custom tree function to plot results of hierarchical clustering analyses
 plottree <- function (object, ...) 
 {
   library(ape)
@@ -435,6 +336,7 @@ plottree <- function (object, ...)
   plot.phylo(x = data.tree, direction = "downwards", ...)
 }
 
+# Custom function to generate publication-ready heatmaps
 prettyheatmap <- function(object, 
                           gene.list,
                           text.size = 8,
@@ -535,8 +437,7 @@ prettyheatmap <- function(object,
   }
 }
 
-
-
+# Custom function to generate publication-ready dotplots
 prettyDots <-
   function(dotplot,
            colors,
@@ -603,3 +504,218 @@ prettyDots <-
     print(plot)
     print(plot.noleg)
   }
+
+# Custom function to generate edgeR fit from Seurat object input
+edgeR_create_fit <- function(object, gene.detection.thres = 0.10, celltype.ident = "order")
+  {
+## Set the object identity 
+object <- SetIdent(object, value = celltype.ident)
+  
+## Detect genes that are expressed in at least 10% of any given cluster in the Seurat object and write them out into a vector called "marker.names".
+marker.names <- GeneDetector(SeuratObj = object, threshold = gene.detection.thres)
+
+## Filter the raw gene-cell counts matrix(stored in the Seurat object) with the genes identified above
+tmp.matrix <- object@assays$RNA@counts[marker.names, ]
+
+## Create the Seurat object to recalculate the nFeature_RNA (unique genes detected/cell)
+tmp <- CreateSeuratObject(tmp.matrix)
+colnames(tmp@meta.data)[3] <- "Recalculated_nGene"
+tmp <- AddMetaData(object = tmp, metadata = object@meta.data)
+
+## Calculate the gdr from the nGene column in the Seurat metadat
+tmp@meta.data$gdr <- as.numeric(scale(tmp@meta.data$Recalculated_nGene))
+
+## Create DGE counts object from the edgeR package
+counts <- DGEList(counts = tmp@assays$RNA@counts, genes = rownames(tmp))
+## Calculate the library sizes of each single cell to be analyzed
+counts$samples$lib.PBMSCize <- colSums(counts$counts)
+## Calculate the normalization factors to be applied to make single cell comparable
+counts <- edgeR::calcNormFactors(counts)
+
+## Reformat metadata from the Seurat object to make compatible with edgeR/design matrix
+edgeRmetadata <- tmp@meta.data[, c("Subject", celltype.ident, "gdr")]
+colnames(edgeRmetadata)[2] <- "celltype"
+edgeRmetadata$celltype <- as.factor(edgeRmetadata$celltype) %>% droplevels()
+design <- model.matrix(~ 0 + gdr + celltype + Subject, data = edgeRmetadata)
+colnames(design) <- make.names(colnames(design))
+
+## Estimate dispersion
+counts <- estimateDisp(counts, design, robust = T)
+## Perform the edgeR fit
+fit <- glmQLFit(counts, design)
+
+return_list <- list(fit, counts, design)
+names(return_list) <- c("fit", "counts", "design")
+return(return_list)
+}
+
+# Custom function to append % expression of DEG/feature to the edgeR topTags output
+add.percent.expression <- 
+  function(dge_list, object, ident, subset = NULL, group.ident = NULL){
+    if(!is.null(subset)){
+      object <- SetIdent(object, value = group.ident)
+      object <- subset(x = object, ident = subset)
+    }
+    dge_list <- dge_list[gtools::mixedorder(names(dge_list))]
+    my_genes <- lapply(dge_list, tibble::remove_rownames) %>% 
+      lapply(tibble::column_to_rownames, var = "genes") %>% 
+      lapply(rownames)
+    object <- SetIdent(object, value = ident)
+    exp <- SplitObject(object, split.by = ident)
+    exp <- exp[gtools::mixedorder(names(exp))]
+    mat <- 
+      mapply(function(x,y) {
+        FetchData(object = x, vars = y)
+      }, 
+      exp, my_genes)
+    matrix <- lapply(mat, function(x) as.matrix(colMeans(x  > 0))*100)
+    matrix <- lapply(matrix, as.data.frame)
+    matrix <- lapply(matrix, setNames, "percent expressed")
+    dge_list.add <- mapply(cbind, dge_list, matrix, SIMPLIFY=FALSE)
+    return(dge_list.add)
+  }
+
+# Function to extract n-mer sequence from a character string from the left
+left <- function (string,char) {
+  base::substr(string,1,char)
+}
+# Function to extract n-mer sequence from a character string from the right
+right <- function (string, char) {
+  base::substr(string,nchar(string)-(char-1),nchar(string))
+}
+
+# Cross-species hierarchical clustering.
+# Inspired by Zillonis et al. Immunity publication. 
+cross_species_dendrogram <- function(species.1.obj, species.2.obj, 
+                                     species1.ident, species2.ident,
+                                     species1.res, species2.res,
+                                     species1.name, species2.name)
+{
+  ## Set objects to compare here (seuratObject)
+  obj_1 <- subset(species.1.obj, idents = species1.ident)
+  obj_2 <- subset(species.2.obj, idents = species2.ident)
+  
+  ### Extract there metadata for cluster ids (seuratObject@meta.data)
+  obj_1.meta <- obj_1@meta.data
+  obj_2.meta <- obj_2@meta.data
+  ## Set resolution to perform comparisons (STRING)
+  obj_1.res <- species1.res
+  obj_2.res <- species2.res
+  ### Set string for species parameter for id on dendrogram (STRING)
+  obj_1.species <- species1.name
+  obj_2.species <- species2.name
+  
+  # Extract counts matrix
+  obj_1.cMat <- obj_1@assays$RNA@counts
+  obj_2.cMat <- obj_2@assays$RNA@counts
+  
+  obj1.Sobj <- CreateSeuratObject(obj_1.cMat)
+  obj2.Sobj <- CreateSeuratObject(obj_2.cMat)
+  
+  # Find highly variable genes under the SCTransform framework
+  obj1.Sobj <- SCTransform(obj1.Sobj)
+  obj2.Sobj <- SCTransform(obj2.Sobj)
+  
+  # Extact highly variable genes
+  obj_1.genes <- VariableFeatures(obj1.Sobj)
+  obj_2.genes <- VariableFeatures(obj2.Sobj)
+  
+  obj1.varplot <- VariableFeaturePlot(obj1.Sobj, log = T)$data %>% arrange(residual_variance)
+  obj2.varplot <- VariableFeaturePlot(obj2.Sobj, log = T)$data %>% arrange(residual_variance)
+  
+  library(inflection)
+  obj1.inf <- ese(x = 1:length(obj1.varplot[,2]), 
+                  y = obj1.varplot[,2], 
+                  index = 1)
+  obj1.inf.pt <- round(length(obj1.varplot[,2]) - (length(obj1.varplot[,2]) - obj1.inf[,3])/2)
+  obj_1.genes <- rownames(obj1.varplot)[obj1.inf.pt:length(rownames(obj1.varplot))]
+  
+  obj2.inf <- ese(x = 1:length(obj2.varplot[,2]), 
+                  y = obj2.varplot[,2] %>% sort(), 
+                  index = 1)
+  obj2.inf.pt <- round(length(obj2.varplot[,2]) - (length(obj2.varplot[,2]) - obj2.inf[,3])/2)
+  obj_2.genes <- rownames(obj2.varplot)[obj2.inf.pt:length(rownames(obj2.varplot))]
+  
+  
+  # Intersect species hvg's to identify shared highly variable orthologs
+  orthologs <- intersect(obj_1.genes,obj_2.genes)
+  
+  # Use RelativeCounts function within Seurat to calculate TPM from counts matrix
+  obj_1.TPM <- RelativeCounts(obj_1.cMat, scale.factor = 10^6)
+  obj_2.TPM <- RelativeCounts(obj_2.cMat, scale.factor = 10^6)
+  
+  # Add some cluster meta data to cell names in the TPM matrices; will be used to identify whose 'who'
+  obj_1 <- SetIdent(obj_1, value = obj_1.res)
+  obj_2 <- SetIdent(obj_2, value = obj_2.res)
+  
+  colnames(obj_1.TPM) <- paste(colnames(obj_1.TPM), Idents(obj_1), sep = "_")
+  colnames(obj_2.TPM) <- paste(colnames(obj_2.TPM), Idents(obj_2), sep = "_")
+  
+  # Filter matrices by highly var orthologs to make file sizes more maneagable
+  obj_1.TPM <- obj_1.TPM[orthologs, ]
+  obj_2.TPM <- obj_2.TPM[orthologs, ]
+  
+  # Convert from sparseMatrix to matrix format to work well with base R functions
+  obj_1.TPM <- as.matrix(obj_1.TPM)
+  obj_2.TPM <- as.matrix(obj_2.TPM)
+  
+  # Tidy data and calculate gene-cluster averages across all groups
+  library(reshape2)
+  obj_1.melt <- melt(obj_1.TPM)
+  colnames(obj_1.melt) <- c("gene", "cell", "count")
+  obj_1.melt$cluster <- sub(".*[0-9]_", "", obj_1.melt$cell)
+  
+  obj_2.melt <- melt(obj_2.TPM)
+  colnames(obj_2.melt) <- c("gene", "cell", "count")
+  obj_2.melt$cluster <- sub(".*_", "", obj_2.melt$cell)
+  
+  library(dplyr)
+  obj_1.groupedbyClusterandGene_means <- obj_1.melt %>%
+    group_by(cluster, gene) %>%
+    summarise(mean = mean(count))
+  obj_2.groupedbyClusterandGene_means <- obj_2.melt %>%
+    group_by(cluster, gene) %>%
+    summarise(mean = mean(count))
+  
+  obj_1.groupedbyClusterandGene_means.df <- dcast(data = obj_1.groupedbyClusterandGene_means, formula = gene ~ cluster, fun.aggregate = sum, value.var = "mean")
+  rownames(obj_1.groupedbyClusterandGene_means.df) <- obj_1.groupedbyClusterandGene_means.df[, 1]
+  obj_1.groupedbyClusterandGene_means.df[, 1] <- NULL
+  
+  obj_2.groupedbyClusterandGene_means.df <- dcast(data = obj_2.groupedbyClusterandGene_means, formula = gene ~ cluster, fun.aggregate = sum, value.var = "mean")
+  rownames(obj_2.groupedbyClusterandGene_means.df) <- obj_2.groupedbyClusterandGene_means.df[, 1]
+  obj_2.groupedbyClusterandGene_means.df[, 1] <- NULL
+  
+  # Add psuedocount TPM of 50 to each matrix of mean expression
+  obj_1.groupedbyClusterandGene_means.df.p <- obj_1.groupedbyClusterandGene_means.df + 50
+  obj_2.groupedbyClusterandGene_means.df.p <- obj_2.groupedbyClusterandGene_means.df + 50
+  
+  # Calculate medians of average expression per gene
+  obj_1.median.mean <- apply(obj_1.groupedbyClusterandGene_means.df.p, MARGIN = 1, median)
+  obj_2.median.mean <- apply(obj_2.groupedbyClusterandGene_means.df.p, MARGIN = 1, median)
+  
+  # Add psuedocount TPM of 50 to each median
+  obj_1.median.mean.p <- obj_1.median.mean + 50
+  obj_2.median.mean.p <- obj_2.median.mean + 50
+  
+  # Perform klein transformation
+  obj_1.kleinTrans <- sweep(obj_1.groupedbyClusterandGene_means.df.p, 1, obj_1.median.mean, "/")
+  obj_2.kleinTrans <- sweep(obj_2.groupedbyClusterandGene_means.df.p, 1, obj_2.median.mean, "/")
+  
+  ## Append species identifier to column names
+  colnames(obj_1.kleinTrans) <- paste(obj_1.species, colnames(obj_1.kleinTrans), sep = "_")
+  colnames(obj_2.kleinTrans) <- paste(obj_2.species, colnames(obj_2.kleinTrans), sep = "_")
+  
+  # Combine matrices via bind columns(species clusters)
+  merged.obj <- cbind(obj_1.kleinTrans, obj_2.kleinTrans)
+  
+  # Perform log transformation(natural)
+  merged.obj.log1p <- log1p(merged.obj)
+  
+  # Calculate pearson distance metrices
+  pearson.dist.df <- as.dist((1 - cor(merged.obj.log1p)) / 2)
+  
+  # Run hclust and visualize dendogram
+  dendo <- hclust(pearson.dist.df, method = "ward.D2")
+  return(dendo)
+}
+

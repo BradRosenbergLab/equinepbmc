@@ -1,10 +1,10 @@
 ---
 title: "Single cell resolution landscape of equine peripheral blood mononuclear cells reveals diverse cell types including T-bet+ B cells."
-author: "Roosheel Patel*, Joy E. Tomlinson*, Thomas J. Divers, Gerlinde R. Van de Walle, Brad Rosenberg, "
+author: "Roosheel Patel*, Joy E. Tomlinson*, Thomas J. Divers, Gerlinde R. Van de Walle, Brad Rosenberg"
 date: "11/23/2020"
 output: html_document
 ---
-
+* indicates co-first authorship
 
 ```{r setup, echo = FALSE}
 knitr::opts_chunk$set(
@@ -19,7 +19,12 @@ knitr::opts_chunk$set(
 ```
 
 ## Abstract
-  Traditional laboratory model organisms represent a small fraction of the diversity of multicellular life, and findings in any given experimental model often do not translate to other species. Immunology research in non-traditional model organisms can be advantageous or even necessary (e.g. for host-pathogen interaction studies), but presents multiple challenges, many stemming from an incomplete understanding of potentially species-specific immune cell types, frequencies and phenotypes. Identifying and characterizing immune cells in such organisms is frequently limited by the availability of species-reactive immunophenotyping reagents for flow cytometry, and insufficient prior knowledge of cell type-defining markers. Here, we demonstrate the utility of single cell RNA sequencing (scRNA-Seq) to characterize immune cells for which traditional experimental tools are limited. Specifically, we used scRNA-Seq to comprehensively define the cellular diversity of equine peripheral blood mononuclear cells (PBMCs) from healthy horses across different breeds, ages, and sexes. We identified 30 cell type clusters partitioned into five major populations: Monocytes/Dendritic Cells, B cells, CD3+PRF1+ lymphocytes, CD3+PRF1- lymphocytes, and Basophils. Comparative analyses revealed many cell populations analogous to human PBMC, including transcriptionally heterogeneous monocytes and distinct dendritic cell subsets (cDC1, cDC2, plasmacytoid DC). Remarkably, we found that a majority of the equine peripheral B cell compartment is comprised of T-bet+ B cells; an immune cell subpopulation typically associated with chronic infection and inflammation in human and mouse.
+  Background: Traditional laboratory model organisms represent a small fraction of the diversity of multicellular life, and findings in any given experimental model often do not translate to other species. 
+Immunology research in non-traditional model organisms can be advantageous or even necessary, such as when studying host-pathogen interactions. However, such research presents multiple challenges, many stemming from an incomplete understanding of potentially species-specific immune cell types, frequencies and phenotypes. Identifying and characterizing immune cells in such organisms is frequently limited by the availability of species-reactive immunophenotyping reagents for flow cytometry, and insufficient prior knowledge of cell type-defining markers. 
+
+Results: Here, we demonstrate the utility of single cell RNA sequencing (scRNA-Seq) to characterize immune cells for which traditional experimental tools are limited. Specifically, we used scRNA-Seq to comprehensively define the cellular diversity of equine peripheral blood mononuclear cells (PBMCs) from healthy horses across different breeds, ages, and sexes. We identified 30 cell type clusters partitioned into five major populations: Monocytes/Dendritic Cells, B cells, CD3+PRF1+ lymphocytes, CD3+PRF1- lymphocytes, and Basophils. Comparative analyses revealed many cell populations analogous to human PBMC, including transcriptionally heterogeneous monocytes and distinct dendritic cell subsets (cDC1, cDC2, plasmacytoid DC). Remarkably, we found that a majority of the equine peripheral B cell compartment is comprised of T-bet+ B cells; an immune cell subpopulation typically associated with chronic infection and inflammation in human and mouse. 
+
+Conclusions: Taken together, our results demonstrate the potential of scRNA-Seq for cellular analyses in non-traditional model organisms, and form the basis for an immune cell atlas of horse peripheral blood.
 
 **Objective: To identify and characterize the immune cell types in the horse peripheral blood using single cell RNA sequencing**
 
@@ -46,7 +51,7 @@ Putative “doublet” cell barcodes were identified and removed from downstream
 ```{r echo = FALSE, message=FALSE}
 ### Load packages necessary for script
 library(renv)
-library(sctransform)
+library(details)
 library(Matrix)
 library(AnnotationDbi)
 library(tibble)
@@ -57,7 +62,9 @@ library(clustree)
 library(future)
 library(rrtools)
 library(rlang)
+library(uwot)
 library(Seurat)
+library(sctransform)
 library(ggnetwork)
 library(RColorBrewer)
 library(ggrepel)
@@ -84,6 +91,8 @@ library(ComplexHeatmap)
 library(circlize)
 library(here)
 library(reshape2)
+library(tidyr)
+library(modelr)
 
 ### Load custom functions used in this analysis
 source(here("R/custom_functions.R"))
@@ -93,23 +102,27 @@ project_dir <- here("equinepbmc/")
 figuresPath <- paste0(project_dir, "/analysis/figures/")
 derivedDataPath <- paste0(project_dir, "/analysis/data/derived_data/")
 ### Read on color-annotation file
-colorSchema_ePBMC <- read_excel(path = here("analysis/data/derived_data/colorschema_annotations.xlsx"))
+colorSchema_ePBMC <- as.data.frame(read_excel(path = here("analysis/data/derived_data/colorschema_annotations.xlsx")))
 ```
 
 # Part 1: Loading and pre-processing gene-cell matrices
 First, we read in the ESAT gene-cell matrices processed by the End Sequence Analysis Toolkit (ESAT) for both standard gene expression quantification and rescue of 3' UTR expression for relevant genes. 
 
-```{r Reading in the ESAT processed gene-cell matrices}
+```{r Reading in the ESAT processed gene-cell matrices, include=FALSE}
 ## Pull counts matrices directly from GEO
 tmpdir <- tempdir()
 url <- "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE148416&format=file"
 file <- basename(url)
 download.file(url, file)
 untar(file, compressed = "gzip", exdir = tmpdir)
-
-gz.files <- lapply(list.files(tmpdir, full.names = T, pattern = "GSM4468652"), gzfile)
+## Extract and unzip gene-cell matrices only
+gz.files <- lapply(list.files(path = tmpdir, full.names = T, pattern = "GSM"), gzfile)
 counts <- lapply(gz.files, read.table, sep = "\t")
-names(counts) <- strsplit(list.files(data_dir), split = "_") %>% sapply("[[", 2)
+names(counts) <- strsplit(list.files(tmpdir), split = "_") %>% sapply("[[", 2)
+counts <- lapply(counts, function(x) {
+  colnames(x) <- gsub(x = colnames(x), pattern = ".*\\.", replacement = "")
+  return(x)
+})
 ```
 
 Doublets were identified by applying JonathonShor's DoubletDectection python tool (doi: http://doi.org/10.5281/zenodo.2678041). Output of the tool will be used as meta.data for the individual subject Seurat objects.
@@ -119,7 +132,7 @@ doublet_out_dir <- here("analysis/data/raw_data/DoubletDetector_output")
 doublet_data <- lapply(list.files(doublet_out_dir, full.names = T), read.table, row.names = 1)
 names(doublet_data) <- strsplit(list.files(doublet_out_dir), split = "_") %>% sapply("[[", 1)
 doublet_data <- lapply(doublet_data, function(x) {
-  rownames(x) <- gsub(x = rownames(x), pattern = ":", replacement = ".")
+  rownames(x) <- gsub(x = rownames(x), pattern = ".*:", replacement = "")
   colnames(x) <- "doublet"
   return(x)
 })
@@ -148,7 +161,7 @@ toMatch <- c("ND1", "ND2", "COX1", "COX2", "ATP8", "ATP6", "COX3", "ND3", "ND4",
 
 ```{r Qauntify mitochondrial RNA contributions in the single cells in all 7 subjects}
 seurat.obj <- lapply(seurat.obj, function(object) {
-  object[["percent.mito"]] <- PercentageFeatureSet(object, features = toMatch)
+  object[["percent.mito"]] <- PercentageFeatureSet(object, features = toMatch)/100
   return(object)
 })
 ```
@@ -176,7 +189,7 @@ seurat.obj <- lapply(seurat.obj,
     nCount_RNA < 20000 & nCount_RNA > 750 &
       nFeature_RNA > 200 &
       doublet < 0.5 &
-      percent.mito < 5
+      percent.mito < 0.05
 )
 ```
 
@@ -184,20 +197,24 @@ seurat.obj <- lapply(seurat.obj,
 
 ```{r Independent normalizaiton (SCTransform) for each subject}
 ## Previous analyses showed clustering/gene expression patterns highly influenced by mitochondrial gene expression, thus we regress it at this step.
-seurat.obj <- lapply(seurat.obj, SCTransform, vars.to.regress = "percent.mito", verbose = FALSE)
+seurat.obj <- lapply(seurat.obj, 
+                     SCTransform, 
+                     vars.to.regress = "percent.mito", 
+                     verbose = TRUE)
 ```
 
 Before we integrate, previous analyses have shown that subsets of the B cell compartment clustered based on there immunoglobulin isotype expression. While biologically relevant, this separation during clustering is troublesome to identify the cell types present in the B cell compartment (i.e. a memory cell expressing IGHG1 versus a memory cell expressing IGHG3). To better identify cell types within the B cells, we exclude the immunoglobulin genes from the integration. 
 
 ```{r Exclude immunoglobulin isotypes from the highly variable genes}
-ePBMC.integrated.features <- SelectIntegrationFeatures(object.list = seurat.obj, nfeatures = 5500)
+ePBMC.integrated.features <- SelectIntegrationFeatures(object.list = seurat.obj, 
+                                                       nfeatures = 5500)
 
 immunoglobulin.genes <- c(
   grep(pattern = "^IGH", x = rownames(seurat.obj$s1), value = T)[-1],
-  "ENSECAG00000031522", "ENSECAG00000001923",
-  "ENSECAG00000039599", "ENSECAG00000038455",
-  "ENSECAG00000031094", "ENSECAG00000015109",
-  "ENSECAG00000033354", "ENSECAG00000007258"
+    "ENSECAG00000031522", "ENSECAG00000001923",
+    "ENSECAG00000039599", "ENSECAG00000038455",
+    "ENSECAG00000031094", "ENSECAG00000015109",
+    "ENSECAG00000033354"
 )
 
 SelectedFeatures <- ePBMC.integrated.features[!ePBMC.integrated.features %in% immunoglobulin.genes]
@@ -205,17 +222,21 @@ SelectedFeatures <- ePBMC.integrated.features[!ePBMC.integrated.features %in% im
 
 ```{r Perform integration of scRNA-seq data from 7 subjects and create a reference dataset}
 ePBMC.integrated <- PrepSCTIntegration(
-  object.list = seurat.obj, anchor.features = SelectedFeatures,
+  object.list = seurat.obj, 
+  anchor.features = SelectedFeatures,
   verbose = TRUE
 )
 
 ePBMC.integrated.anchors <- FindIntegrationAnchors(
-  object.list = ePBMC.integrated, normalization.method = "SCT",
-  anchor.features = SelectedFeatures, verbose = TRUE
+  object.list = ePBMC.integrated, 
+  normalization.method = "SCT",
+  anchor.features = SelectedFeatures, 
+  verbose = TRUE
 )
 
 ePBMC.integrated.obj <- IntegrateData(
-  anchorset = ePBMC.integrated.anchors, normalization.method = "SCT",
+  anchorset = ePBMC.integrated.anchors, 
+  normalization.method = "SCT",
   verbose = TRUE
 )
 ```
@@ -225,9 +246,8 @@ ePBMC.integrated.obj <- IntegrateData(
 ```{r Dimensional Reduction via Principal component analysis}
 ePBMC.integrated.obj <- RunPCA(
   object = ePBMC.integrated.obj,
-  npcs = 100, verbose = TRUE,
-  features = SelectedFeatures
-)
+  npcs = 100,
+  verbose = TRUE)
 ```
 
 ```{r Exploratory analysis of principal components and identification of an appropriate number of dimensions}
@@ -251,7 +271,7 @@ ndims <- 100
 ## Set number of dimensions to visualize per plot
 ndims.plot <- 6
 for (i in 1:as.integer(ndims / ndims.plot)) {
-  dims <- seq_range(x = 1:ndims, by = 5)[i:(i + 1)]
+  dims <- modelr::seq_range(x = 1:ndims, by = 5)[i:(i + 1)]
   DimHeatmap(object = ePBMC.integrated.obj, dims = dims[1]:dims[2], cells = 100, fast = T, balanced = T)
 }
 ```
@@ -277,32 +297,21 @@ res <- "integrated_snn_res.1.2"
 ePBMC.integrated.obj <- SetIdent(object = ePBMC.integrated.obj, value = res)
 
 # Run UMAP embedding
-ePBMC.integrated.obj <- RunUMAP(ePBMC.integrated.obj, dims = 1:25, min.dist = 0.5)
+ePBMC.integrated.obj <- RunUMAP(ePBMC.integrated.obj,
+  dims = 1:25,
+  min.dist = 0.6,
+  n.neighbors = 75
+)
 
 # Build hierarchical clustering based on clustering results
+DefaultAssay(ePBMC.integrated.obj) <- "RNA"
+ePBMC.integrated.obj <- NormalizeData(ePBMC.integrated.obj)
 ePBMC.integrated.obj <- BuildClusterTree(ePBMC.integrated.obj, assay = "RNA", dims = 1:25)
 ```
 
-Next, we perform additional filtering of doublets based on our knowledge of established immune cell markers. In theory, CD3G+ T cells should not express B cell markers such as MS4A1 or CD19, or immunoglobulins.
+Next, cell cycle analysis revealed cluster 21 being composed of cycling and non-cycling cells. To account for this, we manually split cycling cells from cluster 21 from the non-cycling cells in cluster 21.
 
-```{r Filtering step: Remove putative doublets based on knowledge of immune cell development}
-## FeatureScatters
-# CD3G MS4A1 double positive cells
-CD3G_MS4A1.doublets.plot <- FeatureScatter(ePBMC.integrated.obj,
-  feature1 = "CD3G",
-  feature2 = "MS4A1"
-)
-# CD3G CD14 double positive cells
-CD3G_CD141.doublets.plot <- FeatureScatter(ePBMC.integrated.obj,
-  feature1 = "CD3G",
-  feature2 = "CD14"
-)
-# MS4A1 CD14 double positive cells
-MS4A1_CD14.doublets.plot <- FeatureScatter(ePBMC.integrated.obj,
-  feature1 = "MS4A1",
-  feature2 = "CD14"
-)
-
+```{r Additional step: Identifying cycling cells in the CD3+ lymphocyte compartment}
 ePBMC.integrated.obj <- CellCycleScoring(
   object = ePBMC.integrated.obj,
   s.features = cc.genes.updated.2019$s.genes,
@@ -310,8 +319,7 @@ ePBMC.integrated.obj <- CellCycleScoring(
     FALSE
 )
 reg.plot <- DimPlot(ePBMC.integrated.obj, group.by = "Phase")
-# Manually split this cluster up into two clusters: cluster 21-G2M; cluster 21-S
-ePBMC.integrated.obj <- CellSelector(plot = reg.plot, object = ePBMC.integrated.obj, ident = "31")
+# Manually split this cluster up into two clusters: separate cycling cells from non-cycling cells
 ePBMC.integrated.obj <- StashIdent(object = ePBMC.integrated.obj, "clusters")
 ``` 
 
@@ -325,207 +333,142 @@ For our single cell purposes, one of the primary modifications we make is the in
 ```{r Setting up edgeR objects for differential gene expression testing}
 ## Order the Seurat objects identities from low to high numerically
 ePBMC.integrated.obj <- SetIdent(ePBMC.integrated.obj, value = "clusters")
-cellOrder <- seq(0, 31)
-ePBMC.integrated.obj@meta.data$order <- factor(x = ePBMC.integrated.obj$clusters, levels = cellOrder)
+ePBMC.integrated.obj@meta.data$order <- factor(x = ePBMC.integrated.obj$clusters, levels = seq(0, 31))
 ePBMC.integrated.obj <- SetIdent(ePBMC.integrated.obj, value = "order")
 ePBMC.integrated.obj$order <- droplevels(ePBMC.integrated.obj$order)
 
-## Detect genes that are expressed in at least 10% of any given cluster in the Seurat object and write them out into a vector called "marker.names".
-GeneDetector(SeuratObj = ePBMC.integrated.obj, threshold = 0.10, listname = "marker.names")
+## Add Subject meta data
+ePBMC.integrated.obj$Subject <- paste0("Subject_", right(rownames(ePBMC.integrated.obj@meta.data), 1))
+ePBMC.integrated.obj$Subject <- as.factor(ePBMC.integrated.obj$Subject)
 
-## Filter the raw gene-cell counts matrix(stored in the Seurat object) with the genes identified above
-tmp.matrix <- ePBMC.integrated.obj@assays$RNA@counts[marker.names, ]
+## Add annotation metadata to integrated ePBMC object
+ePBMC.integrated.obj$cell_barcode <- rownames(ePBMC.integrated.obj@meta.data)
+colorSchema_ePBMC$order <- as.factor(colorSchema_ePBMC$Cluster)
+updated_metadata <- right_join(colorSchema_ePBMC, ePBMC.integrated.obj@meta.data, by = "order")
+rownames(updated_metadata) <- updated_metadata$cell_barcode
+ePBMC.integrated.obj <- AddMetaData(ePBMC.integrated.obj, metadata = updated_metadata)
 
-## Create the Seurat object to recalculate the nFeature_RNA (unique genes detected/cell)
-tmp <- CreateSeuratObject(tmp.matrix)
-colnames(tmp@meta.data)[3] <- "Recalculated_nGene"
-tmp <- AddMetaData(object = tmp, metadata = ePBMC.integrated.obj@meta.data)
-
-## Calculate the gdr from the nGene column in the Seurat metadat
-tmp@meta.data$gdr <- as.numeric(scale(tmp@meta.data$Recalculated_nGene))
-tmp@meta.data$orig.ident <- NULL
-
-## Create DGE counts object from the edgeR package
-counts <- DGEList(counts = tmp@assays$RNA@counts, genes = rownames(tmp))
-## Calculate the library sizes of each single cell to be analyzed
-counts$samples$lib.PBMSCize <- colSums(counts$counts)
-## Calculate the normalization factors to be applied to make single cell comparable
-counts <- edgeR::calcNormFactors(counts)
-
-## Reformat metadata from the Seurat object to make compatible with edgeR/design matrix
-edgeRmetadata <- tmp@meta.data[, c("horse", "order", "gdr")]
-colnames(edgeRmetadata)[2] <- c("celltype")
-design <- model.matrix(~ 0 + gdr + celltype + horse, data = edgeRmetadata)
-
-## Estimate dispersion
-counts <- estimateDisp(counts, design, robust = T)
-## Perform the edgeR fit
-fit <- glmQLFit(counts, design)
+### Generate edgeR fit, counts DGElist and design matrix
+edgeRobj <- edgeR_create_fit(
+  object = ePBMC.integrated.obj,
+  gene.detection.thres = 0.10,
+  celltype.ident = "order"
+)
 ```
 
 ## Part 6.2: Generating contrasts for major cell groups and subsets within major groups
 
 ```{r Generate constrasts major groups for equine PBMC analysis}
-# CD3+ PRF1- lymphocytes
-contrastConstructor(
-  clusterIDs = c(2, 7, 8, 31, 16, 1, 13, 10, 21, 3, 6),
-  design = design,
-  name = "CD3PRF1negVALL.constrast",
-  makeContrast = T
-)
-# CD3+ PRF1+ lymphocytes
-contrastConstructor(
-  clusterIDs = c(4, 5, 14, 17, 20),
-  design = design,
-  name = "CD3PRF1posVALL.constrast",
-  makeContrast = T
-)
-# B cells
-contrastConstructor(
-  clusterIDs = c(0, 9, 15, 22, 25, 30, 27),
-  design = design,
-  name = "BcellVAll.contrast",
-  makeContrast = T
-)
-# Myeloid cells
-contrastConstructor(
-  clusterIDs = c(11, 12, 18, 28, 19, 24, 26, 23, 29),
-  design = design,
-  name = "McellVAll.contrast",
-  makeContrast = T
-)
-# Monos cells
-contrastConstructor(
-  clusterIDs = c(11, 12, 18, 28),
-  design = design,
-  name = "MocellVAll.contrast",
-  makeContrast = T
-)
-# Basophils
-contrastConstructor(
-  clusterIDs = c(23),
-  design = design,
-  name = "BasoVAll.contrast",
-  makeContrast = T
-)
-# Dendritic cells
-contrastConstructor(
-  clusterIDs = c(19, 24, 26),
-  design = design,
-  name = "DCVAll.contrast",
-  makeContrast = T
+# set major group/compartment vectors
+B.clusters <- c(9, 15, 0, 22, 25, 27, 30)
+basophils.clusters <- c(23)
+cd3prf1neg.clusters <- c(2, 7, 8, 31, 16, 1, 13, 10, 21, 3, 6)
+cd3prf1pos.clusters <- c(4, 5, 14, 17, 20)
+dc.clusters <- c(19, 24, 26)
+mono.clusters <- c(18, 11, 12, 28)
+myeloid.clusters <- c(18, 11, 12, 28, 19, 24, 26, 29)
+
+assignment.list <- list(
+  B.clusters,
+  basophils.clusters,
+  cd3prf1neg.clusters,
+  cd3prf1pos.clusters,
+  dc.clusters,
+  mono.clusters,
+  myeloid.clusters
 )
 
-major.contrasts <- do.call(cbind, lapply(grep(ls(), pattern = "VAll", value = T), get))
-colnames(major.contrasts) <- grep(ls(), pattern = "VAll", value = T)
+names(assignment.list) <- grep(ls(), pattern = "\\.clusters", value = T)
+
+major.group.contrasts <-
+  lapply(
+    seq_along(assignment.list),
+    function(x) {
+      contrastConstructor(
+        clusterIDs = assignment.list[[x]],
+        design = edgeRobj$design,
+        name = names(assignment.list)[[x]],
+        makeContrast = TRUE
+      )
+    }
+  )
+
+major.group.contrasts <- do.call(cbind, major.group.contrasts)
+colnames(major.group.contrasts) <- names(assignment.list)
 ```
 
 ```{r Generate constrasts for subsets within major groups for equine PBMC analysis}
-Bcells.cluster.numbers <- c(0, 9, 15, 22, 27, 30)
-Mcells.cluster.numbers <- c(11, 12, 18, 28, 19, 24, 26, 29)
-Mocells.cluster.numbers <- c(11, 12, 18, 28)
-DCcells.cluster.numbers <- c(19, 24, 26)
+assignment.list$basophils.clusters <- NULL
 
-## B cell subsets
-{
-  for (i in 1:length(Bcells.cluster.numbers)) {
-    contrastConstructor(
-      clusterIDs = Bcells.cluster.numbers[i],
-      clusterIDs.2 = setdiff(Bcells.cluster.numbers, Bcells.cluster.numbers[i]),
-      design = design,
-      makeContrast = T,
-      name = paste("B", Bcells.cluster.numbers[i], sep = "")
-    )
+lapply(
+  seq_along(assignment.list),
+  function(x) {
+    for (i in 1:length(assignment.list[[x]])) {
+      contrastConstructor(
+        clusterIDs = assignment.list[[x]][[i]],
+        clusterIDs.2 = setdiff(assignment.list[[x]], assignment.list[[x]][[i]]),
+        design = edgeRobj$design,
+        makeContrast = T,
+        name = paste(names(assignment.list)[[x]], "subset", assignment.list[[x]][[i]], sep = "_")
+      )
+    }
   }
+)
 
-  grep(ls(), pattern = "B[0-9]", value = T)
-  B.celltype.contrasts <- do.call(cbind, lapply(grep(ls(), pattern = "B[0-9]", value = T), get))
-  colnames(B.celltype.contrasts) <- grep(ls(), pattern = "B[0-9]", value = T)
-}
-
-## Myeloid cell subsets
-{
-  for (i in 1:length(Mcells.cluster.numbers)) {
-    contrastConstructor(
-      clusterIDs = Mcells.cluster.numbers[i],
-      clusterIDs.2 = setdiff(Mcells.cluster.numbers, Mcells.cluster.numbers[i]),
-      design = design,
-      makeContrast = T,
-      name = paste("M", Mcells.cluster.numbers[i], sep = "")
-    )
-  }
-
-  grep(ls(), pattern = "M[0-9]", value = T)
-  M.celltype.contrasts <- do.call(cbind, lapply(grep(ls(), pattern = "M[0-9]", value = T), get))
-  colnames(M.celltype.contrasts) <- grep(ls(), pattern = "M[0-9]", value = T)
-}
-
-## Mono cell subsets
-{
-  for (i in 1:length(Mocells.cluster.numbers)) {
-    contrastConstructor(
-      clusterIDs = Mocells.cluster.numbers[i],
-      clusterIDs.2 = setdiff(Mocells.cluster.numbers, Mocells.cluster.numbers[i]),
-      design = design,
-      makeContrast = T,
-      name = paste("Mo", Mocells.cluster.numbers[i], sep = "")
-    )
-  }
-
-  grep(ls(), pattern = "Mo[0-9]", value = T)
-  Mo.celltype.contrasts <- do.call(cbind, lapply(grep(ls(), pattern = "Mo[0-9]", value = T), get))
-  colnames(Mo.celltype.contrasts) <- grep(ls(), pattern = "Mo[0-9]", value = T)
-}
-
-## DC cell subsets
-{
-  for (i in 1:length(DCcells.cluster.numbers)) {
-    contrastConstructor(
-      clusterIDs = DCcells.cluster.numbers[i],
-      clusterIDs.2 = setdiff(DCcells.cluster.numbers, DCcells.cluster.numbers[i]),
-      design = design,
-      makeContrast = T,
-      name = paste("DC", DCcells.cluster.numbers[i], sep = "")
-    )
-  }
-
-  grep(ls(), pattern = "DC[0-9]", value = T)
-  DC.celltype.contrasts <- do.call(cbind, lapply(grep(ls(), pattern = "DC[0-9]", value = T), get))
-  colnames(DC.celltype.contrasts) <- grep(ls(), pattern = "DC[0-9]", value = T)
-}
+subset.cluster.contrasts <- do.call(cbind, lapply(grep(ls(), pattern = "_subset_", value = T), get))
+subset.cluster.contrasts <- as.data.frame(subset.cluster.contrasts)
+colnames(subset.cluster.contrasts) <- grep(ls(), pattern = "_subset_", value = T)
 ```
 
 ## Part 6.3: Conducted differential gene expression testing between major cell groups and between groups
 
 ```{r Conduct differential gene expression testing for major cell groups and subsets}
-major.glmQLFTest <- list()
-for (i in 1:length(colnames(major.contrasts))) {
-  major.glmQLFTest[[i]] <- glmQLFTest(fit, contrast = major.contrasts[, i]) %>%
+major_dge_list <- list()
+for (i in 1:length(colnames(major.group.contrasts))) {
+  major_dge_list[[i]] <- glmQLFTest(edgeRobj$fit, contrast = major.group.contrasts[, i]) %>%
     topTags(n = NULL)
 }
 
-Myeloid.glmQLFTest <- list()
-for (i in 1:length(colnames(M.celltype.contrasts))) {
-  Myeloid.glmQLFTest[[i]] <- glmQLFTest(fit, contrast = M.celltype.contrasts[, i]) %>%
+subset_dge_list <- list()
+for (i in 1:length(colnames(subset.cluster.contrasts))) {
+  subset_dge_list[[i]] <- glmQLFTest(edgeRobj$fit, contrast = subset.cluster.contrasts[, i]) %>%
     topTags(n = NULL)
 }
+```
 
-Mo.glmQLFTest <- list()
-for (i in 1:length(colnames(Mo.celltype.contrasts))) {
-  Mo.glmQLFTest[[i]] <- glmQLFTest(fit, contrast = Mo.celltype.contrasts[, i]) %>%
-    topTags(n = NULL)
-}
+## Part 6.4: Append percent.expression feature data and putative surface protein classification to differential gene expression tables
 
-DC.glmQLFTest <- list()
-for (i in 1:length(colnames(DC.celltype.contrasts))) {
-  DC.glmQLFTest[[i]] <- glmQLFTest(fit, contrast = DC.celltype.contrasts[, i]) %>%
-    topTags(n = NULL)
-}
+```{r Append percent.expression feature data and putative surface protein classification to differential gene expression tables}
+major_dge_list <- add.percent.expression(
+  dge_list = major_dge_list, object = ePBMC.integrated.obj,
+  ident = "MajorGroup"
+)
 
-for (i in 1:length(colnames(B.celltype.contrasts))) {
-  B.glmQLFTest[[i]] <- glmQLFTest(fit, contrast = B.celltype.contrasts[, i]) %>%
-    topTags(n = NULL)
-}
+major.groups <- unique(ePBMC.integrated.obj$MajorGroup)
+
+b.dge.list <- add.percent.expression(
+  dge_list = subset_dge_list,
+  object = ePBMC.integrated.obj,
+  ident = "order",
+  group.ident = "MajorGroup",
+  subset = "B"
+)
+
+monodc.dge.list <- add.percent.expression(
+  dge_list = subset_dge_list,
+  object = ePBMC.integrated.obj,
+  ident = "order",
+  group.ident = "MajorGroup",
+  subset = "Monocyte&DC"
+)
+
+basophil.dge.list <- add.percent.expression(
+  dge_list = subset_dge_list,
+  object = ePBMC.integrated.obj,
+  ident = "order",
+  group.ident = "MajorGroup",
+  subset = "basophil"
+)
 ```
 
 # Part 7: Figure plotting
@@ -588,7 +531,6 @@ cowplot::plot_grid(plotlist = plots.m, scale = 0.9)
 
 ```{r Heatmap of DEGs between major cell groups}
 major_tables <- major.glmQLFTest
-
 major_tables <- major_tables[c("CD3PRF1neg", "CD3PRF1pos", "B", "Monocyte&DC", "Basophil")]
 major_tables <-
   lapply(major_tables, tibble::remove_rownames) %>% lapply(tibble::column_to_rownames, "genes")
@@ -717,7 +659,7 @@ p1 + annotation_custom(ggplotGrob(p2),
 ### Figure 2B. Stacked bars of cell types frequencies in monocyte/DC compartment across horses
 
 ```{r Stacked bars}
-## Remove contaminating neutrophils
+## Remove contaminating neutrophils (low UMI)
 Mcells.sub <- subset(Mcells, idents = 29, invert = T)
 Mcells.sub$order <- droplevels(Mcells.sub$order)
 horse_mono.dc.cluster_freq.table <- table(Mcells.sub$Subject, Mcells.sub$order) %>% melt()
@@ -846,118 +788,18 @@ This code requires the processed human PBMC reference dataset. This method was i
 ```{r  Cross-species dendrogram between human and equine cell type clusters identified by scRNAseq}
 # Set identity class to high-resolution clustering results
 # Human
-hs.integrated.data <- SetIdent(hs.integrated.data, value = "integrated_snn_res.1.2")
-
+human_pbmc <- SetIdent(human_pbmc, value = "integrated_snn_res.1.2")
 # Horse
 ePBMC.integrated.obj <- SetIdent(ePBMC.integrated.obj, value = "order")
 
-## Set objects to compare here (seuratObject)
-obj_1 <- subset(hs.integrated.data, idents = c(14, 21, 15, 0, 1, 8, 22, 26, 19))
-obj_2 <- subset(ePBMC.integrated.obj, idents = Mcells.order[-length(Mcells.order)])
-### Extrac there metadata for cluster ids (seuratObject@meta.data)
-obj_1.meta <- hs.integrated.data@meta.data
-obj_2.meta <- ePBMC.integrated.obj@meta.data
-## Set resolution to perform comparisons (STRING)
-obj_1.res <- "human.celltype"
-obj_2.res <- "order"
-### Set string for species parameter for id on dendogram (STRING)
-obj_1.species <- "human"
-obj_2.species <- "horse"
-
-# Extact counts matrix
-obj_1.cMat <- obj_1@assays$RNA@counts
-obj_2.cMat <- obj_2@assays$RNA@counts
-
-obj1.Sobj <- CreateSeuratObject(obj_1.cMat)
-obj2.Sobj <- CreateSeuratObject(obj_2.cMat)
-
-# Find highly variable genes under the SCTransform framework
-obj1.Sobj <- SCTransform(obj1.Sobj)
-obj2.Sobj <- SCTransform(obj2.Sobj)
-
-# Extact highly variable genes
-obj_1.genes <- VariableFeatures(obj1.Sobj)
-obj_2.genes <- VariableFeatures(obj2.Sobj)
-
-# Intersect species hvg's to identify shared highly variable orthologs
-orthologs <- intersect(obj_1.genes, obj_2.genes)
-
-# Use RelativeCounts function within Seurat to calculate TPM from counts matrix
-obj_1.TPM <- RelativeCounts(obj_1.cMat, scale.factor = 10^6)
-obj_2.TPM <- RelativeCounts(obj_2.cMat, scale.factor = 10^6)
-
-# Add some cluster meta data to cell names in the TPM matrices; will be used to identify whose 'who'
-obj_1 <- SetIdent(obj_1, value = obj_1.res)
-obj_2 <- SetIdent(obj_2, value = obj_2.res)
-
-colnames(obj_1.TPM) <- paste(colnames(obj_1.TPM), Idents(obj_1), sep = "_")
-colnames(obj_2.TPM) <- paste(colnames(obj_2.TPM), Idents(obj_2), sep = "_")
-
-# Filter matrices by highly var orthologs to make file sizes more maneagable
-obj_1.TPM <- obj_1.TPM[orthologs, ]
-obj_2.TPM <- obj_2.TPM[orthologs, ]
-
-# Convert from sparseMatrix to matrix format to work well with base R functions
-obj_1.TPM <- as.matrix(obj_1.TPM)
-obj_2.TPM <- as.matrix(obj_2.TPM)
-
-# Tidy data and calculate gene-cluster averages across all groups
-library(reshape2)
-obj_1.melt <- melt(obj_1.TPM)
-colnames(obj_1.melt) <- c("gene", "cell", "count")
-obj_1.melt$cluster <- sub(".*[0-9]_", "", obj_1.melt$cell)
-
-obj_2.melt <- melt(obj_2.TPM)
-colnames(obj_2.melt) <- c("gene", "cell", "count")
-obj_2.melt$cluster <- sub(".*_", "", obj_2.melt$cell)
-
-library(dplyr)
-obj_1.groupedbyClusterandGene_means <- obj_1.melt %>%
-  group_by(cluster, gene) %>%
-  summarise(mean = mean(count))
-obj_2.groupedbyClusterandGene_means <- obj_2.melt %>%
-  group_by(cluster, gene) %>%
-  summarise(mean = mean(count))
-
-obj_1.groupedbyClusterandGene_means.df <- dcast(data = obj_1.groupedbyClusterandGene_means, formula = gene ~ cluster, fun.aggregate = sum, value.var = "mean")
-rownames(obj_1.groupedbyClusterandGene_means.df) <- obj_1.groupedbyClusterandGene_means.df[, 1]
-obj_1.groupedbyClusterandGene_means.df[, 1] <- NULL
-
-obj_2.groupedbyClusterandGene_means.df <- dcast(data = obj_2.groupedbyClusterandGene_means, formula = gene ~ cluster, fun.aggregate = sum, value.var = "mean")
-rownames(obj_2.groupedbyClusterandGene_means.df) <- obj_2.groupedbyClusterandGene_means.df[, 1]
-obj_2.groupedbyClusterandGene_means.df[, 1] <- NULL
-
-# Add psuedocount TPM of 50 to each matrix of mean expression
-obj_1.groupedbyClusterandGene_means.df.p <- obj_1.groupedbyClusterandGene_means.df + 50
-obj_2.groupedbyClusterandGene_means.df.p <- obj_2.groupedbyClusterandGene_means.df + 50
-
-# Calculate medians of average expression per gene
-obj_1.median.mean <- apply(obj_1.groupedbyClusterandGene_means.df.p, MARGIN = 1, median)
-obj_2.median.mean <- apply(obj_2.groupedbyClusterandGene_means.df.p, MARGIN = 1, median)
-
-# Add psuedocount TPM of 50 to each median
-obj_1.median.mean.p <- obj_1.median.mean + 50
-obj_2.median.mean.p <- obj_2.median.mean + 50
-
-# Perform klein transformation
-obj_1.kleinTrans <- sweep(obj_1.groupedbyClusterandGene_means.df.p, 1, obj_1.median.mean, "/")
-obj_2.kleinTrans <- sweep(obj_2.groupedbyClusterandGene_means.df.p, 1, obj_2.median.mean, "/")
-
-## Append species identifier to column names
-colnames(obj_1.kleinTrans) <- paste(obj_1.species, colnames(obj_1.kleinTrans), sep = "_")
-colnames(obj_2.kleinTrans) <- paste(obj_2.species, colnames(obj_2.kleinTrans), sep = "_")
-
-# Combine matrices via bind columns(species clusters)
-merged.obj <- cbind(obj_1.kleinTrans, obj_2.kleinTrans)
-
-# Perform log transformation(natural)
-merged.obj.log1p <- log1p(merged.obj)
-
-# Calculate pearson distance metrices
-pearson.dist.df <- as.dist((1 - cor(merged.obj.log1p)) / 2)
-
-# Run hclust and visualize dendogram
-dendo <- hclust(pearson.dist.df, method = "ward.D2")
+dendo <- cross_species_dendrogram(species.1.obj = ePBMC.integrated.obj, 
+                                  species.2.obj = human_pbmc,
+                                  species1.ident =  Mcells.order[-length(Mcells.order)], 
+                                  species2.ident = c(14, 21, 15, 0, 1, 8, 22, 26, 19),
+                                  species1.res = "order", 
+                                  species2.res = "human.celltype",
+                                  species1.name = "horse", 
+                                  species2.name = "human")
 
 dtree <- ggtree(tr = dendo, layout = "rectangular") +
   geom_tiplab(
@@ -1228,138 +1070,18 @@ This code requires the processed human PBMC reference dataset. This method was i
 
 ```{r Cross-species dendrogram between human and equine B cell type clusters identified by scRNAseq}
 # Human
-hs.integrated.data <- SetIdent(hs.integrated.data, value = "integrated_snn_res.1.2")
-
+human_pbmc <- SetIdent(human_pbmc, value = "integrated_snn_res.1.2")
 # Horse
 ePBMC.integrated.obj <- SetIdent(ePBMC.integrated.obj, value = "order")
 
-## Set objects to compare here (seuratObject)
-obj_1 <- subset(hs.integrated.data, idents = c(3, 11, 23))
-obj_2 <- subset(ePBMC.integrated.obj, idents = c(9, 15, 0, 22, 27, 30))
-### Extrac there metadata for cluster ids (seuratObject@meta.data)
-obj_1.meta <- hs.integrated.data@meta.data
-obj_2.meta <- ePBMC.integrated.obj@meta.data
-## Set resolution to perform comparisons (STRING)
-obj_1.res <- "human.celltype"
-obj_2.res <- "order"
-### Set string for species parameter for id on dendogram (STRING)
-obj_1.species <- "human"
-obj_2.species <- "horse"
-
-# Extact counts matrix
-obj_1.cMat <- obj_1@assays$RNA@counts
-obj_2.cMat <- obj_2@assays$RNA@counts
-
-obj1.Sobj <- CreateSeuratObject(obj_1.cMat)
-obj2.Sobj <- CreateSeuratObject(obj_2.cMat)
-
-# Find highly variable genes under the SCTransform framework
-obj1.Sobj <- SCTransform(obj1.Sobj, ncells = 3000, verbose = TRUE, method = "glmGamPoi")
-obj2.Sobj <- SCTransform(obj2.Sobj, ncells = 3000, verbose = TRUE, method = "glmGamPoi")
-
-# Extact highly variable genes
-obj_1.genes <- VariableFeatures(obj1.Sobj)
-obj_2.genes <- VariableFeatures(obj2.Sobj)
-
-hu.var.plot <- VariableFeaturePlot(obj1.Sobj, log = T)
-eq.var.plot <- VariableFeaturePlot(obj2.Sobj, log = T)
-
-library(inflection)
-hu.inf <- ese(
-  x = 1:length(hu.var.plot$data[, 2]),
-  y = hu.var.plot$data[, 2],
-  index = 1
-)
-length(hu.var.plot$data[, 2]) - (length(hu.var.plot$data[, 2]) - hu.inf[, 3]) / 4
-eq.inf <- ese(
-  x = 1:length(eq.var.plot$data[, 2]),
-  y = eq.var.plot$data[, 2] %>% sort(),
-  index = 1
-)
-length(eq.var.plot$data[, 2]) - (length(eq.var.plot$data[, 2]) - eq.inf[, 3]) / 4
-
-obj_1.genes <- hu.var.plot$data[hu.var.plot$data$residual_variance > 1.325, ] %>% rownames()
-obj_2.genes <- eq.var.plot$data[eq.var.plot$data$residual_variance > 1.25, ] %>% rownames()
-
-# Intersect species hvg's to identify shared highly variable orthologs
-orthologs <- intersect(obj_1.genes, obj_2.genes)
-
-# Use RelativeCounts function within Seurat to calculate TPM from counts matrix
-obj_1.TPM <- RelativeCounts(obj_1.cMat, scale.factor = 10^6)
-obj_2.TPM <- RelativeCounts(obj_2.cMat, scale.factor = 10^6)
-
-# Add some cluster meta data to cell names in the TPM matrices; will be used to identify whose 'who'
-obj_1 <- SetIdent(obj_1, value = obj_1.res)
-obj_2 <- SetIdent(obj_2, value = obj_2.res)
-
-colnames(obj_1.TPM) <- paste(colnames(obj_1.TPM), Idents(obj_1), sep = "_")
-colnames(obj_2.TPM) <- paste(colnames(obj_2.TPM), Idents(obj_2), sep = "_")
-
-# Filter matrices by highly var orthologs to make file sizes more maneagable
-obj_1.TPM <- obj_1.TPM[orthologs, ]
-obj_2.TPM <- obj_2.TPM[orthologs, ]
-
-# Convert from sparseMatrix to matrix format to work well with base R functions
-obj_1.TPM <- as.matrix(obj_1.TPM)
-obj_2.TPM <- as.matrix(obj_2.TPM)
-
-# Tidy data and calculate gene-cluster averages across all groups
-library(reshape2)
-obj_1.melt <- melt(obj_1.TPM)
-colnames(obj_1.melt) <- c("gene", "cell", "count")
-obj_1.melt$cluster <- sub(".*_", "", obj_1.melt$cell)
-
-obj_2.melt <- melt(obj_2.TPM)
-colnames(obj_2.melt) <- c("gene", "cell", "count")
-obj_2.melt$cluster <- sub(".*_", "", obj_2.melt$cell)
-
-library(dplyr)
-obj_1.groupedbyClusterandGene_means <- obj_1.melt %>%
-  group_by(cluster, gene) %>%
-  summarise(mean = mean(count))
-obj_2.groupedbyClusterandGene_means <- obj_2.melt %>%
-  group_by(cluster, gene) %>%
-  summarise(mean = mean(count))
-
-obj_1.groupedbyClusterandGene_means.df <- dcast(data = obj_1.groupedbyClusterandGene_means, formula = gene ~ cluster, fun.aggregate = sum, value.var = "mean")
-rownames(obj_1.groupedbyClusterandGene_means.df) <- obj_1.groupedbyClusterandGene_means.df[, 1]
-obj_1.groupedbyClusterandGene_means.df[, 1] <- NULL
-
-obj_2.groupedbyClusterandGene_means.df <- dcast(data = obj_2.groupedbyClusterandGene_means, formula = gene ~ cluster, fun.aggregate = sum, value.var = "mean")
-rownames(obj_2.groupedbyClusterandGene_means.df) <- obj_2.groupedbyClusterandGene_means.df[, 1]
-obj_2.groupedbyClusterandGene_means.df[, 1] <- NULL
-
-# Add psuedocount TPM of 50 to each matrix of mean expression
-obj_1.groupedbyClusterandGene_means.df.p <- obj_1.groupedbyClusterandGene_means.df + 50
-obj_2.groupedbyClusterandGene_means.df.p <- obj_2.groupedbyClusterandGene_means.df + 50
-
-# Calculate medians of average expression per gene
-obj_1.median.mean <- apply(obj_1.groupedbyClusterandGene_means.df.p, MARGIN = 1, median)
-obj_2.median.mean <- apply(obj_2.groupedbyClusterandGene_means.df.p, MARGIN = 1, median)
-
-# Add psuedocount TPM of 50 to each median
-obj_1.median.mean.p <- obj_1.median.mean + 50
-obj_2.median.mean.p <- obj_2.median.mean + 50
-
-# Perform klein transformation
-obj_1.kleinTrans <- sweep(obj_1.groupedbyClusterandGene_means.df.p, 1, obj_1.median.mean, "/")
-obj_2.kleinTrans <- sweep(obj_2.groupedbyClusterandGene_means.df.p, 1, obj_2.median.mean, "/")
-
-## Append species identifier to column names
-colnames(obj_1.kleinTrans) <- paste(obj_1.species, colnames(obj_1.kleinTrans), sep = "_")
-colnames(obj_2.kleinTrans) <- paste(obj_2.species, colnames(obj_2.kleinTrans), sep = "_")
-
-# Combine matrices via bind columns(species clusters)
-merged.obj <- cbind(obj_1.kleinTrans, obj_2.kleinTrans)
-
-# Perform log transformation(natural)
-merged.obj.log1p <- log1p(merged.obj)
-
-# Calculate pearson distance metrices
-pearson.dist.df <- as.dist((1 - cor(merged.obj.log1p)) / 2)
-
-# Run hclust and visualize dendogram
-dendo <- hclust(pearson.dist.df, method = "ward.D2")
+dendo <- cross_species_dendrogram(species.1.obj = ePBMC.integrated.obj, 
+                                  species.2.obj = human_pbmc,
+                                  species1.ident =  c(9, 15, 0, 22, 27, 30), 
+                                  species2.ident = c(3, 11, 23),
+                                  species1.res = "order", 
+                                  species2.res = "human.celltype",
+                                  species1.name = "horse", 
+                                  species2.name = "human")
 
 dtree <- ggtree(tr = dendo, layout = "rectangular") +
   geom_tiplab(
@@ -1695,156 +1417,17 @@ prettyDots(
 This code requires the processed human PBMC reference dataset. This method was inspired by Zilionis R, Engblom C, Pfirschke C, Savova V, Zemmour D, Saatcioglu HD, et al. Single-Cell Transcriptomics of Human and Mouse Lung Cancers Reveals Conserved Myeloid Populations across Individuals and Species. Immunity. 2019. doi:10.1016/j.immuni.2019.03.009.
 
 ```{r Cross-species dendrogram between human and equine CD3+PRF1+ cell type clusters identified by scRNAseq}
-## Set objects to compare here (seuratObject)
-obj_1 <- subset(hs.integrated.data, idents = c(4, 17, 6, 13, 18, 20))
-obj_2 <- prf1pos.int
-### Extrac there metadata for cluster ids (seuratObject@meta.data)
-obj_1.meta <- hs.integrated.data@meta.data
-obj_2.meta <- prf1pos.int@meta.data
-## Set resolution to perform comparisons (STRING)
-obj_1.res <- "human.celltype"
-obj_2.res <- "pp_group"
-### Set string for species parameter for id on dendogram (STRING)
-obj_1.species <- "human"
-obj_2.species <- "horse"
+# Human
+human_pbmc <- SetIdent(human_pbmc, value = "integrated_snn_res.1.2")
 
-# Extact counts matrix
-obj_1.cMat <- obj_1@assays$RNA@counts
-obj_2.cMat <- obj_2@assays$RNA@counts
-
-obj1.Sobj <- CreateSeuratObject(obj_1.cMat)
-obj2.Sobj <- CreateSeuratObject(obj_2.cMat)
-
-# Find highly variable genes under the SCTransform framework
-obj1.Sobj <- SCTransform(obj1.Sobj)
-obj2.Sobj <- SCTransform(obj2.Sobj)
-
-# Extact highly variable genes
-obj_1.genes <- VariableFeatures(obj1.Sobj)
-obj_2.genes <- VariableFeatures(obj2.Sobj)
-
-hu.var.plot <- VariableFeaturePlot(obj1.Sobj, log = T)
-eq.var.plot <- VariableFeaturePlot(obj2.Sobj, log = T)
-
-hu.var.plot$data[hu.var.plot$data$colors == "yes", ]
-plot(hu.var.plot$data[, 2] %>% sort(), log = "y")
-plot(hu.var.plot$data[hu.var.plot$data$residual_variance > 0, ][, 2] %>% sort(),
-  main = "human", ylab = "pearson residual variance", ylim = c(0, 2)
-)
-abline(v = 12515.75, h = 1.25, col = "blue")
-plot(eq.var.plot$data[, 2] %>% sort(), log = "y")
-plot(eq.var.plot$data[eq.var.plot$data$residual_variance > 0, ][, 2] %>% sort(),
-  main = "horse", ylab = "pearson residual variance", ylim = c(0, 2)
-)
-abline(v = 8506.75, h = 1.25, col = "blue")
-
-library(inflection)
-hu.inf <- ese(
-  x = 1:length(hu.var.plot$data[, 2]),
-  y = hu.var.plot$data[, 2],
-  index = 1
-)
-length(hu.var.plot$data[, 2]) - (length(hu.var.plot$data[, 2]) - hu.inf[, 3]) / 4
-eq.inf <- ese(
-  x = 1:length(eq.var.plot$data[, 2]),
-  y = eq.var.plot$data[, 2] %>% sort(),
-  index = 1
-)
-length(eq.var.plot$data[, 2]) - (length(eq.var.plot$data[, 2]) - eq.inf[, 3]) / 4
-
-plot(hu.var.plot$data[hu.var.plot$data$residual_variance > 0, ][, 2] %>% sort(),
-  main = "human", ylab = "pearson residual variance", ylim = c(1.0, 1.3)
-)
-abline(v = 12515.75, h = 1.2, col = "blue")
-plot(eq.var.plot$data[eq.var.plot$data$residual_variance > 0, ][, 2] %>% sort(),
-  main = "horse", ylab = "pearson residual variance", ylim = c(1, 1.3)
-)
-abline(v = 10174.88, h = 1.1175, col = "blue")
-
-
-obj_1.genes <- hu.var.plot$data[hu.var.plot$data$residual_variance > 1.2, ] %>% rownames()
-obj_2.genes <- eq.var.plot$data[eq.var.plot$data$residual_variance > 1.1175, ] %>% rownames()
-
-# Intersect species hvg's to identify shared highly variable orthologs
-orthologs <- intersect(obj_1.genes, obj_2.genes)
-
-
-# Use RelativeCounts function within Seurat to calculate TPM from counts matrix
-obj_1.TPM <- RelativeCounts(obj_1.cMat, scale.factor = 10^6)
-obj_2.TPM <- RelativeCounts(obj_2.cMat, scale.factor = 10^6)
-
-# Add some cluster meta data to cell names in the TPM matrices; will be used to identify whose 'who'
-obj_1 <- SetIdent(obj_1, value = obj_1.res)
-obj_2 <- SetIdent(obj_2, value = obj_2.res)
-
-colnames(obj_1.TPM) <- paste(colnames(obj_1.TPM), Idents(obj_1), sep = "_")
-colnames(obj_2.TPM) <- paste(colnames(obj_2.TPM), Idents(obj_2), sep = "_")
-
-# Filter matrices by highly var orthologs to make file sizes more maneagable
-obj_1.TPM <- obj_1.TPM[orthologs, ]
-obj_2.TPM <- obj_2.TPM[orthologs, ]
-
-# Convert from sparseMatrix to matrix format to work well with base R functions
-obj_1.TPM <- as.matrix(obj_1.TPM)
-obj_2.TPM <- as.matrix(obj_2.TPM)
-
-# Tidy data and calculate gene-cluster averages across all groups
-library(reshape2)
-obj_1.melt <- melt(obj_1.TPM)
-colnames(obj_1.melt) <- c("gene", "cell", "count")
-obj_1.melt$cluster <- sub(".*_", "", obj_1.melt$cell)
-
-obj_2.melt <- melt(obj_2.TPM)
-colnames(obj_2.melt) <- c("gene", "cell", "count")
-obj_2.melt$cluster <- sub(".*_", "", obj_2.melt$cell)
-
-library(dplyr)
-obj_1.groupedbyClusterandGene_means <- obj_1.melt %>%
-  group_by(cluster, gene) %>%
-  summarise(mean = mean(count))
-obj_2.groupedbyClusterandGene_means <- obj_2.melt %>%
-  group_by(cluster, gene) %>%
-  summarise(mean = mean(count))
-
-obj_1.groupedbyClusterandGene_means.df <- dcast(data = obj_1.groupedbyClusterandGene_means, formula = gene ~ cluster, fun.aggregate = sum, value.var = "mean")
-rownames(obj_1.groupedbyClusterandGene_means.df) <- obj_1.groupedbyClusterandGene_means.df[, 1]
-obj_1.groupedbyClusterandGene_means.df[, 1] <- NULL
-
-obj_2.groupedbyClusterandGene_means.df <- dcast(data = obj_2.groupedbyClusterandGene_means, formula = gene ~ cluster, fun.aggregate = sum, value.var = "mean")
-rownames(obj_2.groupedbyClusterandGene_means.df) <- obj_2.groupedbyClusterandGene_means.df[, 1]
-obj_2.groupedbyClusterandGene_means.df[, 1] <- NULL
-
-# Add psuedocount TPM of 50 to each matrix of mean expression
-obj_1.groupedbyClusterandGene_means.df.p <- obj_1.groupedbyClusterandGene_means.df + 50
-obj_2.groupedbyClusterandGene_means.df.p <- obj_2.groupedbyClusterandGene_means.df + 50
-
-# Calculate medians of average expression per gene
-obj_1.median.mean <- apply(obj_1.groupedbyClusterandGene_means.df.p, MARGIN = 1, median)
-obj_2.median.mean <- apply(obj_2.groupedbyClusterandGene_means.df.p, MARGIN = 1, median)
-
-# Add psuedocount TPM of 50 to each median
-obj_1.median.mean.p <- obj_1.median.mean + 50
-obj_2.median.mean.p <- obj_2.median.mean + 50
-
-# Perform klein transformation
-obj_1.kleinTrans <- sweep(obj_1.groupedbyClusterandGene_means.df.p, 1, obj_1.median.mean, "/")
-obj_2.kleinTrans <- sweep(obj_2.groupedbyClusterandGene_means.df.p, 1, obj_2.median.mean, "/")
-
-## Append species identifier to column names
-colnames(obj_1.kleinTrans) <- paste(obj_1.species, colnames(obj_1.kleinTrans), sep = "_")
-colnames(obj_2.kleinTrans) <- paste(obj_2.species, colnames(obj_2.kleinTrans), sep = "_")
-
-# Combine matrices via bind columns(species clusters)
-merged.obj <- cbind(obj_1.kleinTrans, obj_2.kleinTrans)
-
-# Perform log transformation(natural)
-merged.obj.log1p <- log1p(merged.obj)
-
-# Calculate pearson distance metrices
-pearson.dist.df <- as.dist((1 - cor(merged.obj.log1p)) / 2)
-
-# Run hclust and visualize dendogram
-dendo <- hclust(pearson.dist.df, method = "ward.D2")
+dendo <- cross_species_dendrogram(species.1.obj = prf1pos.int, 
+                                  species.2.obj = human_pbmc,
+                                  species1.ident = NULL, 
+                                  species2.ident = c(4, 17, 6, 13, 18, 20),
+                                  species1.res = "pp_group", 
+                                  species2.res = "human.celltype",
+                                  species1.name = "horse", 
+                                  species2.name = "human")
 
 dtree <- ggtree(tr = dendo, layout = "rectangular") +
   geom_tiplab(
@@ -1853,6 +1436,7 @@ dtree <- ggtree(tr = dendo, layout = "rectangular") +
   ) +
   theme(axis.text = element_text(size = 22))
 dtree
+
 ```
 
 ## Part 7.6: CD3+ PRF1- lymphocyte analysis - Figure 6
@@ -1970,14 +1554,15 @@ for (i in 1:length(cluster.numbers)) {
   contrastConstructor(
     clusterIDs = cluster.numbers[i],
     clusterIDs.2 = setdiff(cluster.numbers, cluster.numbers[i]),
-    design = design,
+    design = fit.$design,
     makeContrast = T,
     name = paste("cd3prf1neg_reclustered", cluster.numbers[i], sep = "")
   )
-  grep(ls(), pattern = "^cd3prf1neg_reclustered[0-9]", value = T)
-  contrasts <- do.call(cbind, lapply(grep(ls(), pattern = "cd3prf1neg_reclustered[0-9]", value = T), get))
-  colnames(prf1.neg.contrasts) <- grep(ls(), pattern = "cd3prf1neg_reclustered[0-9]", value = T)
 }
+
+grep(ls(), pattern = "^cd3prf1neg_reclustered[0-9]", value = T)
+contrasts <- do.call(cbind, lapply(grep(ls(), pattern = "cd3prf1neg_reclustered[0-9]", value = T), get))
+colnames(prf1.neg.contrasts) <- grep(ls(), pattern = "cd3prf1neg_reclustered[0-9]", value = T)
 
 ## Perform differential gene expression testing
 prf1.neg.glmQLFTest <- list()
